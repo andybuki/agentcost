@@ -1,0 +1,53 @@
+from agentcost.parse import iter_turns
+from conftest import make_entry
+
+def test_extracts_metadata(write_log):
+    logs = write_log([make_entry(usage={"input_tokens": 1, "output_tokens": 2,
+                                        "cache_creation_input_tokens": 3,
+                                        "cache_read_input_tokens": 4})])
+    (t,) = iter_turns(logs)
+    assert t == {"ts": "2026-10-01T10:00:00Z", "session": "s1", "cwd": "/projects/acme-x",
+                 "branch": "main", "model": "claude-sonnet-3",
+                 "in": 1, "out": 2, "cw": 3, "cr": 4}
+
+def test_never_returns_prompt_text(write_log):
+    e = make_entry()
+    e["message"]["content"] = [{"type": "text", "text": "SECRET"}]
+    (t,) = iter_turns(write_log([e]))
+    assert "SECRET" not in repr(t)
+
+def test_dedup_streamed_lines(write_log):
+    e = make_entry()
+    logs = write_log([e, e, e])
+    assert len(list(iter_turns(logs))) == 1
+
+def test_dedup_across_files(write_log):
+    e = make_entry()
+    write_log([e], "a/s.jsonl")
+    logs = write_log([e], "b/s.jsonl")
+    assert len(list(iter_turns(logs))) == 1
+
+def test_same_message_id_different_request_kept(write_log):
+    logs = write_log([make_entry(request_id="r1"), make_entry(request_id="r2")])
+    assert len(list(iter_turns(logs))) == 2
+
+def test_missing_message_id_not_deduped(write_log):
+    e = make_entry(msg_id=None)
+    logs = write_log([e, e])
+    assert len(list(iter_turns(logs))) == 2
+
+def test_skips_non_assistant_bad_json_and_no_usage(write_log):
+    no_usage = make_entry(msg_id="m2")
+    del no_usage["message"]["usage"]
+    logs = write_log([
+        {"type": "user", "message": {"content": "hi"}},
+        "{not json",
+        no_usage,
+        make_entry(msg_id="m3"),
+    ])
+    assert [t["model"] for t in iter_turns(logs)] == ["claude-sonnet-3"]
+
+def test_null_token_counts_become_zero(write_log):
+    logs = write_log([make_entry(usage={"input_tokens": None, "output_tokens": 5})])
+    (t,) = iter_turns(logs)
+    assert (t["in"], t["out"], t["cw"], t["cr"]) == (0, 5, 0, 0)
