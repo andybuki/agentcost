@@ -23,7 +23,11 @@ them. The web view and the CLI both query the DB, not the raw logs.
 
 ## Phase 0 — groundwork (small, unblocks everything)
 
-1. **Split `agentcost.py` into a package** — no behaviour change:
+Status: done except step 4 (needs real logs).
+
+1. ✅ **Split `agentcost.py` into a package** — no behaviour change
+   (verified: identical output to the old script). Run with
+   `python -m agentcost`; `store.py`, `web.py` and `static/` come in later PRs:
    ```
    agentcost/
      parse.py      # iter_turns()  (log reading + dedup)
@@ -32,11 +36,10 @@ them. The web view and the CLI both query the DB, not the raw logs.
      report.py     # CLI table / CSV (current main())
      web.py        # http server + JSON API
      static/index.html, app.js, style.css
-   agentcost.py    # thin wrapper, keeps old CLI working
    ```
-2. **pytest suite** (CLAUDE.md step 2): dedup, branch-before-cwd attribution,
+2. ✅ **pytest suite** (CLAUDE.md step 2): dedup, branch-before-cwd attribution,
    longest-prefix pricing, unpriced models, `(unassigned)` bucket.
-3. **`gen_sample.py`: spread data over ~6 months** (currently only 2026-10),
+3. ✅ **`gen_sample.py`: spread data over ~6 months** (currently only 2026-10),
    with a visible trend and one month spike — otherwise there is nothing to
    compare.
 4. Sanity check against real `~/.claude/projects` logs (CLAUDE.md step 1).
@@ -116,19 +119,26 @@ bookmarked.
 
 | # | PR | size |
 |---|---|---|
-| 1 | Package split + pytest + multi-month sample data | S |
+| 1 | ✅ Package split + pytest + multi-month sample data | S |
 | 2 | SQLite store + `ingest` command; CLI reads from DB | M |
 | 3 | `serve` + JSON API (+ API tests) | M |
 | 4 | Web view: period bar, KPI tiles, comparison table | M |
 | 5 | Web view: trend chart, model mix, unassigned panel, CSV | M |
 | 6 | Client monthly report (print view) | S |
 
-## Open questions
+## Decisions
 
-1. Currency: keep one fixed `currency_rate`, or per-month rates (ECB)? Fixed
-   is fine for MVP; per-month matters once invoices are generated.
-2. Subscription users (Max/Pro): show "API-equivalent cost" next to the
-   actual flat fee, so the view also answers "is my subscription worth it"?
-3. Should the web view be able to edit client rules, or stay read-only and
-   leave `clients.toml` as the single source of truth? (Proposal: read-only
-   + generated snippets for MVP.)
+1. **Currency:** one fixed `currency_rate` in `clients.toml` — no per-month rates.
+2. **Subscriptions:** show both. Add to `clients.toml`:
+   ```toml
+   [subscription]
+   name = "Claude Max"
+   monthly_fee = 180.0   # in currency_symbol
+   ```
+   The web view shows, per period, the actual flat fee (pro-rated for
+   partial periods) next to the API-equivalent cost, plus the ratio
+   ("API-equivalent is 3.2× your fee"). Client billing still uses the
+   API-equivalent cost × markup. No `[subscription]` section → pay-per-use,
+   the fee tile is hidden.
+3. **Rule editing:** `clients.toml` is the only place rules are edited. The web
+   view is read-only; the unassigned panel generates TOML snippets to paste in.

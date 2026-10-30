@@ -13,15 +13,20 @@ client or billing layer).
 - Target market: DACH freelancers, consultancies, agencies (2–20 people).
 
 ## Current state (MVP)
-- `agentcost.py` — parses `~/.claude/projects/**/*.jsonl`, dedups streamed
-  lines by (message.id, requestId), attributes by branch regex then cwd regex,
-  prices via longest model-prefix match, applies markup, prints table / CSV.
-- `clients.toml` — prices (placeholders!) and client rules.
-- `gen_sample.py` — synthetic logs for testing.
+- `agentcost/` package, run with `python -m agentcost`:
+  - `parse.py` — parses `~/.claude/projects/**/*.jsonl`, dedups streamed
+    lines by (message.id, requestId).
+  - `rules.py` — attribution by branch regex then cwd regex, pricing via
+    longest model-prefix match.
+  - `report.py` — aggregation, markup, table / CSV output.
+- `clients.toml` — prices (placeholders!) and client rules. Single source of
+  truth for rules; the planned web view stays read-only.
+- `gen_sample.py` — synthetic logs, 2026-05..2026-10 with an Acme spike in August.
+- `tests/` — pytest suite. `PLAN.md` — roadmap for the store + web view.
 
 ## Next steps
 1. Verify against real Claude Code logs; adjust field names if the format differs.
-2. Unit tests (pytest) for attribution, pricing, dedup.
+2. SQLite store + web view with period comparison — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
 5. Client-facing monthly report (HTML/PDF), export for DATEV / sevDesk.

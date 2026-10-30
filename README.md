@@ -12,13 +12,20 @@ report. Prompt text and file contents are never read. No LLM calls.
 ```bash
 # test with synthetic data
 python gen_sample.py
-python agentcost.py --config clients.toml --logs sample_logs --month 2026-10
+python -m agentcost --config clients.toml --logs sample_logs --month 2026-10
 
 # real logs (default location ~/.claude/projects)
-python agentcost.py --config clients.toml --month 2026-10 --csv report.csv
+python -m agentcost --config clients.toml --month 2026-10 --csv report.csv
 ```
 
-Requires Python 3.11+ (uses `tomllib`).
+Requires Python 3.11+ (uses `tomllib`). No runtime dependencies.
+
+## Tests
+
+```bash
+pip install pytest
+python -m pytest
+```
 
 ## Configuration
 
