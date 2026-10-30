@@ -18,11 +18,13 @@ computer** (`~/.claude/projects`, on Windows `C:\Users\<you>\.claude\projects`).
 | Chat in the Claude desktop app or claude.ai | no, chats are stored by Anthropic | ❌ |
 | ChatGPT, DeepSeek, other tools | no | ❌ (planned: manual cost entries) |
 
-**Check what is seen:** run the command below, do a short Claude Code session,
-run it again. If the turn count went up, that way of working is tracked.
+**Check what is seen:** open PowerShell (or a terminal), go to the agentcost
+folder, run the command below, do a short Claude Code session, run it again.
+If the turn count went up, that way of working is tracked.
 
-```bash
-python -m agentcost doctor --config clients.toml
+```powershell
+cd C:\Users\<you>\IdeaProjects\agentcost
+python -m agentcost doctor
 ```
 
 ## 2. How a turn is assigned to a client
@@ -133,11 +135,11 @@ Work on `main` in that repository falls back to the folder rules.
 ## 6. Workflow
 
 1. Organise folders (section 3) or agree on branch prefixes (section 4).
-2. Run `python -m agentcost doctor --config clients.toml`. The section
+2. Run `python -m agentcost doctor`. The section
    **"Folders without a client"** lists every folder that needs a rule.
 3. Add `[[client]]` rules to `clients.toml`. Delete the example clients
    (Acme, Stadtwerke Nord, Internal) if you don't need them.
-4. Reload the web view (`python -m agentcost serve --config clients.toml --open`).
+4. Reload the web view (`python -m agentcost serve --open`).
    The **Unassigned work** box shows what is still left, with a ready-made rule
    to copy.
 

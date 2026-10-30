@@ -10,16 +10,36 @@ read. No LLM calls, no network calls.
 
 ![Web view](docs/screenshot.png)
 
+## How to run commands
+
+All commands are typed in a terminal (PowerShell on Windows, Terminal on
+macOS/Linux), **inside the agentcost folder** — the one that contains
+`clients.toml`:
+
+```powershell
+cd C:\Users\<you>\IdeaProjects\agentcost
+python -m agentcost doctor
+```
+
+Every command starts with `python -m agentcost`, followed by the command name
+(`doctor`, `serve`, `report`, `ingest`). Typing only `doctor` does not work.
+
+Optional, to type `agentcost doctor` from any folder: install it once with
+`pip install -e .` (inside the agentcost folder). If Windows then says
+"agentcost" is not recognised, the Python `Scripts` folder is not on your
+PATH — keep using `python -m agentcost`. When run outside the agentcost folder,
+add `--config C:\path\to\clients.toml`.
+
 ## Quick start
 
 ```bash
 # web view with synthetic data (May–Oct 2026) → http://127.0.0.1:8765/
 python gen_sample.py
-python -m agentcost serve --config clients.toml --logs sample_logs --db sample.db --open
+python -m agentcost serve --logs sample_logs --db sample.db --open
 
 # real logs (default location ~/.claude/projects)
-python -m agentcost serve --config clients.toml --open
-python -m agentcost report --config clients.toml --month 2026-10 --csv report.csv
+python -m agentcost serve --open
+python -m agentcost report --month 2026-10 --csv report.csv
 ```
 
 Requires Python 3.11+ (uses `tomllib`). No runtime dependencies. On Windows,
@@ -39,7 +59,7 @@ reads every folder that exists of `$CLAUDE_CONFIG_DIR/projects`,
 `~/.config/claude/projects` and `~/.claude/projects`.
 
 **Page empty or numbers missing?** Run
-`python -m agentcost doctor --config clients.toml` first. Models without a price
+`python -m agentcost doctor` first. Models without a price
 in `clients.toml` (e.g. DeepSeek or GLM used through Claude Code) still show
 their tokens, but count as 0 cost until you add a `[prices."model"]` section;
 `doctor` prints ready-made ones. Without any client rules the page shows usage
