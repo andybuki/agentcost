@@ -18,8 +18,9 @@ TOKEN_KEYS = ("in", "out", "cw", "cr")
 def enrich(turns, cfg, rules):
     """Attach local day, client, project, cost and billable amount to each turn.
 
-    Returns (records sorted by time, set of models without a price). Unpriced
-    turns are left out of the records so totals never silently undercount.
+    Returns (records sorted by time, set of models without a price). Turns of
+    unpriced models are kept with cost 0 and priced=False, so their usage still
+    shows; callers must surface the unpriced set so cost is never silently low.
     """
     tz = ZoneInfo(cfg.get("timezone", "UTC"))
     rate = cfg.get("currency_rate", 1.0)
@@ -36,18 +37,18 @@ def enrich(turns, cfg, rules):
             price_cache[model] = price_for(prices, model)
         p = price_cache[model]
         if p is None:
-            unpriced.add(model); continue
+            unpriced.add(model)
         key = (t["cwd"], t["branch"])
         if key not in clients:
             clients[key] = attribute(rules, *key)
         client = clients[key]
-        cost = turn_cost(t, p) * rate
+        cost = turn_cost(t, p) * rate if p else 0.0
         out.append({
             "day": dt.date(), "client": client, "model": model,
             "project": PurePosixPath(t["cwd"] or "").name or "(none)",
             "session": t["session"], "cwd": t["cwd"], "branch": t["branch"],
             "in": t["in"], "out": t["out"], "cw": t["cw"], "cr": t["cr"],
-            "cost": cost, "billable": cost * markups.get(client, 0.0),
+            "cost": cost, "billable": cost * markups.get(client, 0.0), "priced": p is not None,
         })
     out.sort(key=lambda r: r["day"])
     return out, unpriced
@@ -67,6 +68,8 @@ def _totals(recs):
         sessions.add(r["session"])
     g["sessions"] = len(sessions)
     g["margin"] = g["billable"] - g["cost"]
+    g["tokens"] = sum(g[k] for k in TOKEN_KEYS)
+    g["unpriced_turns"] = sum(1 for r in recs if not r["priced"])
     return g
 
 def summary(recs):
@@ -77,7 +80,7 @@ def breakdown(recs, by):
     for r in recs:
         groups[r[by]].append(r)
     rows = [{"name": k, **_totals(v)} for k, v in groups.items()]
-    return sorted(rows, key=lambda r: (-r["cost"], r["name"]))
+    return sorted(rows, key=lambda r: (-r["cost"], -r["tokens"], r["name"]))
 
 def compare(recs_a, recs_b, by):
     """Rows for period A with period B alongside; includes rows only present in B."""
@@ -96,9 +99,11 @@ def compare(recs_a, recs_b, by):
             "cmp_billable": rb["billable"] if rb else 0.0,
             "margin": ra["margin"] if ra else 0.0,
             "sessions": ra["sessions"] if ra else 0,
+            "tokens": ra["tokens"] if ra else 0,
+            "cmp_tokens": rb["tokens"] if rb else 0,
             "share": ca / total_a if total_a else 0.0,
         })
-    return sorted(rows, key=lambda r: (-r["cost"], -r["cmp_cost"], r["name"]))
+    return sorted(rows, key=lambda r: (-r["cost"], -r["tokens"], -r["cmp_cost"], r["name"]))
 
 def bucket_key(d, bucket):
     if bucket == "day":
@@ -120,8 +125,13 @@ def buckets(start, end, bucket):
         d += timedelta(days=1)
     return keys
 
-def timeseries(recs, start, end, bucket, by, order, top=7):
-    """Cost per bucket, one series per `by` value.
+METRICS = ("cost", "tokens")
+
+def _value(r, metric):
+    return r["cost"] if metric == "cost" else r["in"] + r["out"] + r["cw"] + r["cr"]
+
+def timeseries(recs, start, end, bucket, by, order, top=7, metric="cost"):
+    """Cost (or tokens) per bucket, one series per `by` value.
 
     Series beyond the first `top` names in `order` (stable, all-time order) fold
     into "Other", so colors never depend on the selected period.
@@ -132,16 +142,16 @@ def timeseries(recs, start, end, bucket, by, order, top=7):
     series = defaultdict(lambda: [0.0] * len(keys))
     for r in recs:
         name = r[by] if r[by] in keep else OTHER
-        series[name][idx[bucket_key(r["day"], bucket)]] += r["cost"]
+        series[name][idx[bucket_key(r["day"], bucket)]] += _value(r, metric)
     names = [n for n in order[:top] if n in series] + ([OTHER] if OTHER in series else [])
     return {"buckets": keys, "series": [{"name": n, "values": series[n]} for n in names]}
 
-def bucket_totals(recs, start, end, bucket):
+def bucket_totals(recs, start, end, bucket, metric="cost"):
     keys = buckets(start, end, bucket)
     idx = {k: i for i, k in enumerate(keys)}
     vals = [0.0] * len(keys)
     for r in recs:
-        vals[idx[bucket_key(r["day"], bucket)]] += r["cost"]
+        vals[idx[bucket_key(r["day"], bucket)]] += _value(r, metric)
     return vals
 
 def previous_period(start, end):

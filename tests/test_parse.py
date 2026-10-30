@@ -51,3 +51,23 @@ def test_null_token_counts_become_zero(write_log):
     logs = write_log([make_entry(usage={"input_tokens": None, "output_tokens": 5})])
     (t,) = iter_turns(logs)
     assert (t["in"], t["out"], t["cw"], t["cr"]) == (0, 5, 0, 0)
+
+def test_skips_synthetic_messages(write_log):
+    logs = write_log([make_entry(msg_id="a", model="<synthetic>"), make_entry(msg_id="b")])
+    assert [t["msg_id"] for t in iter_turns(logs)] == ["b"]
+
+def test_several_log_dirs_and_missing_ones(tmp_path, write_log):
+    write_log([make_entry(msg_id="a")], "x/s.jsonl")
+    other = tmp_path / "other"
+    (other / "p").mkdir(parents=True)
+    import json
+    (other / "p" / "s.jsonl").write_text(json.dumps(make_entry(msg_id="b")) + "\n")
+    dirs = [tmp_path / "logs", other, tmp_path / "does-not-exist"]
+    assert sorted(t["msg_id"] for t in iter_turns(dirs)) == ["a", "b"]
+
+def test_default_log_dirs_respects_env(monkeypatch, tmp_path):
+    from agentcost.parse import default_log_dirs
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    dirs = default_log_dirs()
+    assert dirs[0] == tmp_path / "projects"
+    assert any(str(d).endswith(".claude/projects") for d in dirs)

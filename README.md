@@ -32,8 +32,18 @@ Requires Python 3.11+ (uses `tomllib`). No runtime dependencies. On Windows,
 | `ingest` | copy new log lines into the local store (`~/.agentcost/agentcost.db`) |
 | `report` | ingest, then print a per-client table (`--month`, `--csv`); the default when only flags are given |
 | `serve` | ingest, then serve the web view on `127.0.0.1` (`--port`, `--open`) |
+| `doctor` | show which log folders were found, which models were used (and which have no price), and how turns are attributed |
 
-All take `--logs DIR` and `--db FILE`.
+All take `--logs DIR` (repeatable) and `--db FILE`. Without `--logs`, agentcost
+reads every folder that exists of `$CLAUDE_CONFIG_DIR/projects`,
+`~/.config/claude/projects` and `~/.claude/projects`.
+
+**Page empty or numbers missing?** Run
+`python -m agentcost doctor --config clients.toml` first. Models without a price
+in `clients.toml` (e.g. DeepSeek or GLM used through Claude Code) still show
+their tokens, but count as 0 cost until you add a `[prices."model"]` section;
+`doctor` prints ready-made ones. Without any client rules the page shows usage
+by model and project.
 
 **Why a store:** Claude Code deletes session logs after 30 days by default
 (`cleanupPeriodDays`). Run `ingest` (or `serve` / `report`) at least that often

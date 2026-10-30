@@ -47,6 +47,12 @@
           <option value="model">Model</option>
         </select>
       </label>
+      <label>Chart shows
+        <select id="metric">
+          <option value="cost">Cost</option>
+          <option value="tokens">Tokens</option>
+        </select>
+      </label>
       <label>Bars per
         <select id="bucket">
           <option value="auto">Auto</option>
@@ -60,13 +66,14 @@
 
   <nav id="crumbs" class="crumbs" hidden></nav>
   <div id="warnings"></div>
+  <div id="notice"></div>
   <p id="period-label" class="period-label"></p>
 
   <section id="kpis" class="kpis" aria-label="Totals"></section>
 
   <section class="card">
     <div class="card-head">
-      <h2>Cost over time</h2>
+      <h2 id="trend-title">Cost over time</h2>
       <div id="legend" class="legend"></div>
     </div>
     <div id="trend" class="chart"></div>

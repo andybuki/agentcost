@@ -43,12 +43,12 @@ def connect(db_path=DEFAULT_DB):
     con.executescript(SCHEMA)
     return con
 
-def ingest(con, log_dir):
+def ingest(con, log_dirs):
     """Read new lines from all log files. Idempotent; returns number of new turns."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     known = {r[0]: r[1:] for r in con.execute("SELECT path, size, mtime, offset FROM files")}
     added = 0
-    for f in log_files(log_dir):
+    for f in log_files(log_dirs):
         st = f.stat()
         path = str(f)
         size, mtime, offset = known.get(path, (None, None, 0))

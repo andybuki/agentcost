@@ -72,3 +72,10 @@ def test_refresh_and_config_reload(server, config_path, write_log):
     os.utime(config_path, (time.time() + 5, time.time() + 5))
     meta = json.loads(get(f"{base}/api/meta")[2])
     assert "OSS" in meta["orders"]["client"]
+
+def test_meta_reports_clients_and_log_dirs(server):
+    base, _, logs = server
+    meta = json.loads(get(f"{base}/api/meta")[2])
+    assert meta["has_clients"] is True
+    assert meta["turns_stored"] == 3
+    assert meta["log_dirs"] == [{"path": str(logs), "found": True, "files": 1}]

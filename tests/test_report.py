@@ -33,11 +33,12 @@ def test_month_filter(config_path, write_log):
     rows, _, _ = run(config_path, logs, "2026-10")
     assert rows["Acme"][2] == 1_000_000
 
-def test_unpriced_models_reported_not_counted(config_path, write_log):
-    logs = write_log([make_entry(msg_id="a", model="gpt-5"), make_entry(msg_id="b")])
+def test_unpriced_models_reported_tokens_kept_cost_zero(config_path, write_log):
+    logs = write_log([make_entry(msg_id="a", model="deepseek-chat"), make_entry(msg_id="b")])
     rows, _, unpriced = run(config_path, logs)
-    assert unpriced == {"gpt-5"}
-    assert rows["Acme"][2] == 1_000_000
+    assert unpriced == {"deepseek-chat"}
+    assert rows["Acme"][2] == 2_000_000          # usage of both models is shown
+    assert rows["Acme"][6:] == [1.5, 2.25]       # only the priced one costs money
 
 def test_rows_sorted_by_cost(config_path, write_log):
     logs = write_log([make_entry(msg_id="a", cwd="/projects/swn-x"),
