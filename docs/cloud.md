@@ -50,6 +50,31 @@ npx wrangler login
 npx wrangler d1 create agentcost
 ```
 
+**If `wrangler login` fails** (e.g. `OAuth error: request_forbidden … No CSRF
+value available in the session cookie`): the browser that opened didn't keep
+Cloudflare's login cookie. Common on managed/company PCs or with strict cookie
+settings. Two ways around it:
+
+1. Log in at https://dash.cloudflare.com in your **default** browser first,
+   then run `npx wrangler login` again. If another browser opens than the one
+   you're logged in with, copy the long link wrangler prints into the right one.
+2. Skip the browser login and use an API token instead (works always):
+   - Dashboard → profile icon → **My Profile → API Tokens → Create Token** →
+     template **"Edit Cloudflare Workers"** → under *Permissions* add
+     **Account · D1 · Edit** → Continue → Create. Copy the token.
+   - Your **Account ID** is on the dashboard's *Workers & Pages* overview (right side).
+   - In the same PowerShell window:
+     ```powershell
+     $env:CLOUDFLARE_API_TOKEN = "<API token>"
+     $env:CLOUDFLARE_ACCOUNT_ID = "<Account ID>"
+     npx wrangler whoami
+     ```
+     `whoami` should show your account. Then continue with
+     `npx wrangler d1 create agentcost` — no `wrangler login` needed.
+
+A line like `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` after an
+error is a harmless crash of Node.js on Windows while exiting; ignore it.
+
 The last command prints a `database_id`. Paste it into `wrangler.toml` in place
 of `REPLACE-WITH-ID-FROM-wrangler-d1-create`. Then:
 
