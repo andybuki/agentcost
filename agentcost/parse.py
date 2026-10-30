@@ -1,6 +1,13 @@
 """Read Claude Code session logs. Only metadata is extracted — never prompt text."""
-import json
+import json, os
 from pathlib import Path
+
+def default_log_dirs():
+    """Where Claude Code may write session logs, most specific first."""
+    dirs = [Path(d).expanduser() / "projects"
+            for d in os.environ.get("CLAUDE_CONFIG_DIR", "").split(",") if d.strip()]
+    dirs += [Path("~/.config/claude/projects").expanduser(), Path("~/.claude/projects").expanduser()]
+    return list(dict.fromkeys(dirs))
 
 def parse_line(line):
     """Return a turn dict for an assistant line with usage, else None."""
@@ -12,7 +19,8 @@ def parse_line(line):
         return None
     msg = e.get("message") or {}
     usage = msg.get("usage")
-    if not usage:
+    # Claude Code writes "<synthetic>" placeholder messages with zero usage.
+    if not usage or msg.get("model") == "<synthetic>":
         return None
     return {
         "msg_id": msg.get("id"),
@@ -49,12 +57,20 @@ def read_file(path, offset=0):
             pos += len(raw)
     return turns, pos
 
-def log_files(log_dir):
-    return sorted(Path(log_dir).expanduser().rglob("*.jsonl"))
+def log_files(log_dirs):
+    """All *.jsonl below one directory or a list of directories (missing ones skipped)."""
+    if isinstance(log_dirs, (str, Path)):
+        log_dirs = [log_dirs]
+    files = set()
+    for d in log_dirs:
+        d = Path(d).expanduser()
+        if d.is_dir():
+            files.update(d.rglob("*.jsonl"))
+    return sorted(files)
 
-def iter_turns(log_dir):
+def iter_turns(log_dirs):
     seen = set()
-    for f in log_files(log_dir):
+    for f in log_files(log_dirs):
         with open(f, encoding="utf-8") as fh:
             for line in fh:
                 t = parse_line(line)

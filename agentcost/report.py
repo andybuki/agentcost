@@ -10,15 +10,20 @@ Usage:
   python -m agentcost [report] --config clients.toml [--month 2026-10] [--csv out.csv]
   python -m agentcost ingest
   python -m agentcost serve --config clients.toml [--port 8765] [--open]
+  python -m agentcost doctor --config clients.toml   # what was found, what is missing
 
-Common options: --logs DIR (default ~/.claude/projects),
+Common options: --logs DIR (repeatable; default: $CLAUDE_CONFIG_DIR/projects,
+                ~/.config/claude/projects and ~/.claude/projects),
                 --db FILE (default ~/.agentcost/agentcost.db)
 """
 import argparse, csv, sys
+from collections import Counter
 from datetime import date
+from pathlib import Path
 
 from . import analytics as A
-from .rules import load_config
+from .parse import default_log_dirs, log_files
+from .rules import UNASSIGNED, load_config, price_for
 from .store import DEFAULT_DB, connect, ingest, load_turns
 
 def aggregate(turns, cfg, rules, month=None):
@@ -78,6 +83,44 @@ def cmd_ingest(a):
     con.close()
     print(f"{added} new turns ingested, {total} stored in {a.db}")
 
+def cmd_doctor(a):
+    """Explain what agentcost sees. Prints metadata only (paths, models, counts)."""
+    print("Log folders:")
+    for d in a.logs:
+        d = Path(d).expanduser()
+        n = len(log_files(d)) if d.is_dir() else 0
+        print(f"  {'found  ' if d.is_dir() else 'missing'} {d}" + (f"  ({n} log files)" if d.is_dir() else ""))
+    con = connect(a.db)
+    added = ingest(con, a.logs)
+    turns = load_turns(con)
+    con.close()
+    print(f"\nStore: {a.db} — {len(turns)} turns ({added} new)")
+    if not turns:
+        print("\nNo usage found. Is Claude Code writing logs to one of the folders above?"
+              "\nPass the right folder with --logs DIR.")
+        return
+    cfg, rules = load_config(a.config)
+    recs, unpriced = A.enrich(turns, cfg, rules)
+    print(f"Data from {recs[0]['day']} to {recs[-1]['day']} ({cfg.get('timezone', 'UTC')})")
+
+    print("\nModels:")
+    by_model = {r["name"]: r for r in A.breakdown(recs, "model")}
+    for model, n in Counter(r["model"] for r in recs).most_common():
+        g = by_model[model]
+        price = price_for(cfg["prices"], model)
+        note = f"{g['cost']:.2f} {cfg.get('currency_symbol', 'USD')}" if price else "NO PRICE in clients.toml"
+        print(f"  {model:32} {n:>7} turns  {g['tokens'] / 1e6:>9.1f}M tokens  {note}")
+
+    print("\nClients:")
+    counts = Counter(r["client"] for r in recs)
+    for r in rules:
+        print(f"  {r['name']:32} {counts.get(r['name'], 0):>7} turns")
+    print(f"  {UNASSIGNED:32} {counts.get(UNASSIGNED, 0):>7} turns")
+    if unpriced:
+        print("\nTo price the missing models, add to clients.toml (USD per million tokens):")
+        for m in sorted(unpriced):
+            print(f'  [prices."{m}"]\n  input = 0.0\n  output = 0.0\n  cache_write = 0.0\n  cache_read = 0.0\n')
+
 def cmd_serve(a):
     from .web import serve
     serve(a.config, a.db, a.logs, a.port, a.open)
@@ -88,7 +131,7 @@ def main(argv=None):
         argv = ["report"] + argv  # old CLI: flags only
 
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--logs", default="~/.claude/projects")
+    common.add_argument("--logs", action="append", help="log folder (repeatable)")
     common.add_argument("--db", default=DEFAULT_DB)
 
     ap = argparse.ArgumentParser(prog="agentcost")
@@ -105,6 +148,10 @@ def main(argv=None):
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--open", action="store_true", help="open the browser")
     p.set_defaults(fn=cmd_serve)
+    p = sub.add_parser("doctor", parents=[common], help="show found logs, models and clients")
+    p.add_argument("--config", required=True)
+    p.set_defaults(fn=cmd_doctor)
 
     a = ap.parse_args(argv)
+    a.logs = a.logs or default_log_dirs()
     a.fn(a)

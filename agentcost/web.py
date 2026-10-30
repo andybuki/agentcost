@@ -11,7 +11,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from . import analytics as A
-from .rules import load_config
+from .parse import log_files
+from .rules import UNASSIGNED, load_config
 from .store import connect, ingest, load_turns
 
 STATIC = Path(__file__).parent / "static"
@@ -23,7 +24,8 @@ class BadRequest(Exception):
 
 class App:
     def __init__(self, config, db, logs):
-        self.config, self.db, self.logs = Path(config), db, logs
+        self.config, self.db = Path(config), db
+        self.logs = [logs] if isinstance(logs, (str, Path)) else list(logs)
         self.lock = threading.Lock()
         self._key = None
         self.data_version = 0
@@ -38,6 +40,8 @@ class App:
                 self.turns = load_turns(con)
             finally:
                 con.close()
+            self.log_status = [{"path": str(Path(d).expanduser()), "found": Path(d).expanduser().is_dir(),
+                                "files": len(log_files(d))} for d in self.logs]
             self.data_version += 1
             return added
 
@@ -69,6 +73,10 @@ class App:
             "orders": orders,
             "subscription": cfg.get("subscription"),
             "unpriced": sorted(unpriced),
+            # Example rules that match nothing count as "no clients yet".
+            "has_clients": any(n != UNASSIGNED for n in orders["client"]),
+            "turns_stored": len(self.turns),
+            "log_dirs": self.log_status,
         }
 
     def report(self, q):
@@ -96,21 +104,24 @@ class App:
         else:
             raise BadRequest("'cmp' must be prev, yoy, custom or none")
         client = q.get("client") or None
+        metric = q.get("metric", "cost")
+        if metric not in A.METRICS:
+            raise BadRequest("'metric' must be cost or tokens")
 
         cur = A.select(recs, start, end, client)
         prev = A.select(recs, cstart, cend, client) if cstart else []
         # The flat fee covers all clients, so it is only shown for the full view.
         fee = None if client else A.subscription_fee(cfg, start, end)
         cmp_fee = A.subscription_fee(cfg, cstart, cend) if cstart and fee is not None else None
-        ts = A.timeseries(cur, start, end, bucket, by, orders[by])
+        ts = A.timeseries(cur, start, end, bucket, by, orders[by], metric=metric)
         if cstart:
             # Comparison drawn bucket-by-bucket against the current period.
-            ts["cmp_values"] = A.bucket_totals(prev, cstart, cend, bucket)
+            ts["cmp_values"] = A.bucket_totals(prev, cstart, cend, bucket, metric)
             ts["cmp_buckets"] = A.buckets(cstart, cend, bucket)
         return {
             "range": [start.isoformat(), end.isoformat()],
             "cmp_range": [cstart.isoformat(), cend.isoformat()] if cstart else None,
-            "bucket": bucket, "by": by, "client": client,
+            "bucket": bucket, "by": by, "client": client, "metric": metric,
             "currency": cfg.get("currency_symbol", "USD"),
             "summary": A.summary(cur),
             "cmp_summary": A.summary(prev) if cstart else None,
@@ -127,7 +138,7 @@ class App:
     def export_csv(self, q):
         r = self.report(q)
         cols = ["name", "cost", "cmp_cost", "delta", "delta_pct", "billable",
-                "margin", "sessions", "share"]
+                "margin", "sessions", "tokens", "share"]
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow([r["by"]] + cols[1:])
