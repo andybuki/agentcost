@@ -16,9 +16,14 @@ def load_config(path):
         })
     return cfg, rules
 
+def normalize_path(cwd):
+    """Use "/" on every OS, so one rule works for Windows and Unix paths."""
+    return (cwd or "").replace("\\", "/")
+
 def attribute(rules, cwd, branch):
     # First matching rule wins; branch rules are checked before cwd rules
     # so a shared monorepo can still be split by branch naming (e.g. acme/*).
+    cwd = normalize_path(cwd)
     for r in rules:
         if branch and any(p.search(branch) for p in r["branch"]):
             return r["name"]

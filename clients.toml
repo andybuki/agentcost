@@ -34,6 +34,8 @@ cache_read = 0.1
 
 # Attribution rules: regex on working directory and/or git branch.
 # Branch rules win over directory rules (useful for shared monorepos).
+# Paths always use "/" — Windows paths are converted, so
+# cwd = ["/IdeaProjects/acme-"] also matches C:\Users\me\IdeaProjects\acme-shop.
 [[client]]
 name = "Acme GmbH"
 cwd = ["/projects/acme-"]

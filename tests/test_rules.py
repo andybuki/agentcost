@@ -35,3 +35,7 @@ def test_turn_cost():
     price = {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3}
     t = {"in": 1_000_000, "out": 100_000, "cw": 200_000, "cr": 1_000_000}
     assert turn_cost(t, price) == 3.0 + 1.5 + 0.75 + 0.3
+
+def test_windows_paths_match_slash_rules(config_path):
+    _, rules = load_config(config_path)
+    assert attribute(rules, r"C:\Users\me\projects\swn-dash", "main") == "SWN"

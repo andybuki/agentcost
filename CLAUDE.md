@@ -31,7 +31,8 @@ client or billing layer).
 - `tests/` — pytest suite. `PLAN.md` — roadmap for the store + web view.
 
 ## Next steps
-1. Verify against real Claude Code logs; adjust field names if the format differs.
+1. ✅ Verified against real Claude Code logs on Windows (2026-10): field names
+   match; Windows paths are normalized to "/" for rules and project names.
 2. Client-facing monthly report (print view) — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
