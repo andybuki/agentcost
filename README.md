@@ -54,6 +54,8 @@ Requires Python 3.11+ (uses `tomllib`). No runtime dependencies. On Windows,
 | `serve` | ingest, then serve the web view on `127.0.0.1` (`--port`, `--open`) |
 | `sync` | download cloud-session turns from your collector ([docs/cloud.md](docs/cloud.md)); runs automatically once set up |
 | `cloud-setup` | print the setup script for your cloud environment |
+| `tokens` | create an ingest + read token pair for the collector |
+| `collector` | run a self-hosted collector on your own server (alternative to the Cloudflare Worker) |
 | `doctor` | show which log folders were found, which models were used (and which have no price), and how turns are attributed |
 
 All take `--logs DIR` (repeatable) and `--db FILE`. Without `--logs`, agentcost

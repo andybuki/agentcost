@@ -28,6 +28,8 @@ client or billing layer).
   - `cloud_hook.py` (standalone Stop hook in cloud sessions) → `cloud/worker`
     (Cloudflare Worker + D1, user's own account, separate ingest/read tokens)
     → `sync.py` pulls into the store (`source = 'cloud'`). See `docs/cloud.md`.
+    Alternative collector: `collector.py` (`python -m agentcost collector`),
+    same API; `tests/test_collectors.py` runs one contract against both.
     Cloud capture sends metadata to the user's own collector — the only path
     where data leaves the machine.
 - `clients.toml` — prices (placeholders!) and client rules. Single source of

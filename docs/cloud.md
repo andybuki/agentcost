@@ -2,15 +2,25 @@
 
 Cloud sessions (the ☁ ones in the Claude app, or claude.ai/code) run in a
 container on Anthropic's servers. Their logs never reach your PC, and the
-container is deleted after the session. To count them, each cloud session
-sends its usage **metadata** to a small collector in **your own Cloudflare
-account**, and `agentcost sync` downloads it to your PC.
+container is deleted after the session, and it can't reach your PC. So each
+cloud session drops its usage **metadata** into a small "mailbox" on the
+internet — the **collector** — and `agentcost sync` picks it up on your PC.
 
 ```
-cloud session ──(Stop hook, after each reply)──▶ your Cloudflare Worker + D1
+cloud session ──(Stop hook, after each reply)──▶ collector (yours)
                                                         │
 your PC: python -m agentcost sync  ◀────────────────────┘
 ```
+
+You choose where the collector runs. Both speak the same protocol, so the hook
+and `sync` work the same with either:
+
+| | **A. Cloudflare Worker** | **B. Python collector on your own server** |
+|---|---|---|
+| Cost | free tier | a small VPS (e.g. Hetzner, ~4 €/month) |
+| Data location | Cloudflare | wherever your server is (e.g. Germany) |
+| You need | Node.js, Cloudflare account | a server with a public HTTPS address |
+| Steps | section 2A | section 2B |
 
 **What is sent:** time, folder (e.g. `/home/user/bankstm`), git branch,
 session id, model, token counts. **Never** prompts, answers or code.
@@ -18,20 +28,21 @@ session id, model, token counts. **Never** prompts, answers or code.
 **Two tokens:** the *ingest* token (stored in your cloud environment) can only
 add rows. The *read* token (only on your PC) can only read them.
 
-Setup takes about 15 minutes, once. You need:
-- Node.js on your PC (for Cloudflare's `wrangler` tool): https://nodejs.org
-- a free Cloudflare account: https://dash.cloudflare.com/sign-up
+Setup takes about 15 minutes, once.
 
 ## 1. Create two tokens
 
-In PowerShell, run this twice and keep both values (e.g. in your password
-manager). The first is the **ingest token**, the second the **read token**:
-
 ```powershell
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+python -m agentcost tokens
 ```
 
-## 2. Deploy the collector to Cloudflare
+Keep both values (e.g. in your password manager): the **ingest token** goes to
+the cloud environment, the **read token** stays on your PC.
+
+## 2A. Deploy the collector to Cloudflare
+
+You need Node.js (https://nodejs.org) and a free Cloudflare account
+(https://dash.cloudflare.com/sign-up).
 
 ```powershell
 cd C:\Users\<you>\IdeaProjects\agentcost\cloud\worker
@@ -52,6 +63,31 @@ npx wrangler secret put READ_TOKEN
 `wrangler secret put` asks for the value: paste the ingest and the read token.
 `wrangler deploy` prints your collector's address, like
 `https://agentcost.<your-subdomain>.workers.dev`. That is your **collector URL**.
+Open it in a browser: it should show `{"service": "agentcost collector"}`.
+
+## 2B. Or: run the Python collector on your own server
+
+On a Linux server with Python 3.11+ and a domain (here `agentcost.example.de`):
+
+```bash
+git clone <your agentcost repository> && cd agentcost
+export AGENTCOST_INGEST_TOKEN=<ingest token> AGENTCOST_READ_TOKEN=<read token>
+python3 -m agentcost collector --port 8787 --db ~/agentcost-collector.db
+```
+
+It listens on `127.0.0.1:8787` and speaks plain HTTP, so put HTTPS in front —
+otherwise tokens travel unencrypted. With [Caddy](https://caddyserver.com),
+which gets the certificate automatically, the whole config is:
+
+```
+agentcost.example.de {
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+Your collector URL is then `https://agentcost.example.de`. To keep it running
+after logout, start it as a systemd service (put the two tokens in the unit's
+`Environment=` lines).
 
 ## 3. Connect your PC
 

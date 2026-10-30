@@ -177,40 +177,6 @@ def test_setup_script_installs_hook_idempotently(tmp_path):
     assert cmds == ["other.sh", "python3 ~/.agentcost-hook/agentcost_hook.py"]
     assert s["model"] == "x"
 
-# ---- end to end through the real worker code (needs node >= 22.5) ----
-
-def _node_ok():
-    node = shutil.which("node")
-    if not node:
-        return False
-    r = subprocess.run([node, "-e", "require('node:sqlite')"], capture_output=True)
-    return r.returncode == 0
-
-@pytest.mark.skipif(not _node_ok(), reason="node with node:sqlite not available")
-def test_end_to_end_with_worker(tmp_path, config_path):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]
-    env = {**os.environ, "INGEST_TOKEN": "in-tok", "READ_TOKEN": "read-tok", "NODE_NO_WARNINGS": "1"}
-    srv = subprocess.Popen(["node", "test/dev-server.mjs", str(port)], cwd=ROOT / "cloud" / "worker",
-                           env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    try:
-        assert b"collector on" in srv.stdout.readline()
-        url = f"http://127.0.0.1:{port}"
-        path = transcript(tmp_path, [make_entry(msg_id=f"m{i}", cwd="/home/user/acme-api") for i in range(3)])
-        hook_env = {**os.environ, "AGENTCOST_URL": url, "AGENTCOST_INGEST_TOKEN": "in-tok",
-                    "AGENTCOST_HOOK_STATE": str(tmp_path / "st.json"), "AGENTCOST_HOOK_DEBUG": "1",
-                    "NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1"}
-        r = subprocess.run([sys.executable, str(ROOT / "agentcost" / "cloud_hook.py")],
-                           input=json.dumps({"transcript_path": path}), text=True,
-                           env=hook_env, capture_output=True)
-        assert r.returncode == 0 and r.stderr == ""
-        con = connect(tmp_path / "e2e.db")
-        assert sync(con, url, "read-tok") == 3
-        turns = load_turns(con)
-        assert {t["cwd"] for t in turns} == {"/home/user/acme-api"} and turns[0]["cr"] == 0
-    finally:
-        srv.terminate(); srv.wait()
-
 def test_hook_check_mode(tmp_path, collector, monkeypatch, capsys):
     home = tmp_path / "home"
     proj = home / ".claude" / "projects" / "p"
