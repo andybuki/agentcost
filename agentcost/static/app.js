@@ -153,6 +153,8 @@ function render() {
     warn.push(`No price in <code>clients.toml</code> for: ${r.unpriced.map((m) => `<code>${esc(m)}</code>`).join(", ")}.
       Their tokens are shown, but they count as ${money(0)}. Add a <code>[prices."model-name"]</code> section
       (or run <code>python -m agentcost doctor</code> for a ready-made one).`);
+  if (meta.cloud?.error)
+    warn.push(`Cloud sessions could not be synced: ${esc(meta.cloud.error)}. Showing what was synced before.`);
   $("#warnings").innerHTML = warn.map((w) => `<div class="warn">${w}</div>`).join("");
   $("#notice").innerHTML = meta.has_clients || r.client ? "" :
     `<div class="note">No work is matched to a client yet, so this view shows usage by model and project.
@@ -428,6 +430,7 @@ async function init() {
   setupFormats(meta.currency);
   $("#data-range").textContent = meta.first_day
     ? `data ${fmtDate(meta.first_day)} – ${fmtDate(meta.last_day)} · ${meta.timezone}`
+      + (meta.cloud.configured ? ` · ${int(meta.cloud.turns)} turns from cloud sessions` : "")
     : "no data yet — run Claude Code, then Refresh";
   const fromUrl = new URLSearchParams(location.search);
   readUrl();

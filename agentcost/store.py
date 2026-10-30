@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS turns (
     cache_read  INTEGER NOT NULL DEFAULT 0,
     source_file TEXT,
     ingested_at TEXT,
+    source      TEXT NOT NULL DEFAULT 'local',  -- 'local' log file or 'cloud' collector
     PRIMARY KEY (msg_id, request_id)
 );
 CREATE INDEX IF NOT EXISTS turns_ts ON turns(ts);
@@ -34,18 +35,42 @@ CREATE TABLE IF NOT EXISTS files (
     mtime  REAL,
     offset INTEGER
 );
+CREATE TABLE IF NOT EXISTS sync_state (
+    url      TEXT PRIMARY KEY,
+    last_seq INTEGER NOT NULL DEFAULT 0
+);
 """
+
+INSERT_TURN = """INSERT OR IGNORE INTO turns
+    (msg_id, request_id, ts, session, cwd, branch, model,
+     tok_in, tok_out, cache_write, cache_read, source_file, ingested_at, source)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
 
 def connect(db_path=DEFAULT_DB):
     p = Path(db_path).expanduser()
     p.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(p)
     con.executescript(SCHEMA)
+    # Stores created before cloud sync have no source column.
+    if "source" not in {r[1] for r in con.execute("PRAGMA table_info(turns)")}:
+        con.execute("ALTER TABLE turns ADD COLUMN source TEXT NOT NULL DEFAULT 'local'")
     return con
+
+def now_utc():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+def insert_turns(con, rows):
+    """Insert (turn, source_file, source) tuples; returns the number of new rows."""
+    now = now_utc()
+    before = con.total_changes
+    con.executemany(INSERT_TURN, [
+        (t["msg_id"], t["request_id"] or "", t["ts"], t["session"], t["cwd"], t["branch"],
+         t["model"], t["in"], t["out"], t["cw"], t["cr"], src_file, now, source)
+        for t, src_file, source in rows])
+    return con.total_changes - before
 
 def ingest(con, log_dirs):
     """Read new lines from all log files. Idempotent; returns number of new turns."""
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     known = {r[0]: r[1:] for r in con.execute("SELECT path, size, mtime, offset FROM files")}
     added = 0
     for f in log_files(log_dirs):
@@ -57,13 +82,9 @@ def ingest(con, log_dirs):
         if st.st_size < offset:  # rewritten or truncated: start over
             offset = 0
         turns, new_offset = read_file(f, offset)
-        before = con.total_changes
-        con.executemany(
-            "INSERT OR IGNORE INTO turns VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            [(t["msg_id"] or f"{path}:{t['pos']}", t["request_id"] or "", t["ts"],
-              t["session"], t["cwd"], t["branch"], t["model"],
-              t["in"], t["out"], t["cw"], t["cr"], path, now) for t in turns])
-        added += con.total_changes - before
+        for t in turns:
+            t["msg_id"] = t["msg_id"] or f"{path}:{t['pos']}"
+        added += insert_turns(con, [(t, path, "local") for t in turns])
         con.execute("INSERT OR REPLACE INTO files VALUES (?,?,?,?)",
                     (path, st.st_size, st.st_mtime, new_offset))
     con.commit()
@@ -72,8 +93,8 @@ def ingest(con, log_dirs):
 def load_turns(con):
     """All stored turns as dicts in the same shape parse.iter_turns yields."""
     cur = con.execute("""SELECT msg_id, request_id, ts, session, cwd, branch, model,
-                                tok_in, tok_out, cache_write, cache_read
+                                tok_in, tok_out, cache_write, cache_read, source
                          FROM turns ORDER BY ts""")
     keys = ("msg_id", "request_id", "ts", "session", "cwd", "branch", "model",
-            "in", "out", "cw", "cr")
+            "in", "out", "cw", "cr", "source")
     return [dict(zip(keys, r)) for r in cur]

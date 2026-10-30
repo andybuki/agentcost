@@ -2,3 +2,5 @@ __pycache__/
 .pytest_cache/
 *.db
 *.egg-info/
+node_modules/
+.wrangler/

@@ -9,7 +9,7 @@ def server(tmp_path, config_path, write_log):
     logs = write_log([make_entry(msg_id="a", ts="2026-09-10T10:00:00Z"),
                       make_entry(msg_id="b", ts="2026-10-10T10:00:00Z"),
                       make_entry(msg_id="c", ts="2026-10-11T10:00:00Z", cwd="/oss/x")])
-    app = App(config_path, tmp_path / "t.db", logs)
+    app = App(config_path, tmp_path / "t.db", logs, tmp_path / "cloud.json")
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), None)
     port = httpd.server_address[1]
     httpd.RequestHandlerClass = make_handler(app, port)

@@ -52,6 +52,8 @@ Requires Python 3.11+ (uses `tomllib`). No runtime dependencies. On Windows,
 | `ingest` | copy new log lines into the local store (`~/.agentcost/agentcost.db`) |
 | `report` | ingest, then print a per-client table (`--month`, `--csv`); the default when only flags are given |
 | `serve` | ingest, then serve the web view on `127.0.0.1` (`--port`, `--open`) |
+| `sync` | download cloud-session turns from your collector ([docs/cloud.md](docs/cloud.md)); runs automatically once set up |
+| `cloud-setup` | print the setup script for your cloud environment |
 | `doctor` | show which log folders were found, which models were used (and which have no price), and how turns are attributed |
 
 All take `--logs DIR` (repeatable) and `--db FILE`. Without `--logs`, agentcost
@@ -91,6 +93,10 @@ python -m pytest
 ```
 
 ## Configuration
+
+**Cloud sessions** (Claude Code on the web / ☁ in the Claude app) don't write
+logs to your PC. To count them, set up your own collector once:
+[docs/cloud.md](docs/cloud.md).
 
 **How to split work by client:** see [docs/clients.md](docs/clients.md) —
 what agentcost can see, how folders and branches map to clients, and

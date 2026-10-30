@@ -1,0 +1,13 @@
+# agentcost collector — deploy with: npx wrangler deploy  (see docs/cloud.md)
+name = "agentcost"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "agentcost"
+database_id = "REPLACE-WITH-ID-FROM-wrangler-d1-create"
+
+# Secrets (never in this file):
+#   npx wrangler secret put INGEST_TOKEN   # write-only, for cloud sessions
+#   npx wrangler secret put READ_TOKEN     # read-only, for your PC

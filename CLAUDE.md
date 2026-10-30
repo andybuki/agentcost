@@ -25,6 +25,11 @@ client or billing layer).
   - `report.py` — CLI (`report` / `ingest` / `serve`), table / CSV output.
   - `web.py` + `static/` — local web view on 127.0.0.1, vanilla JS + SVG,
     no external requests. Read-only.
+  - `cloud_hook.py` (standalone Stop hook in cloud sessions) → `cloud/worker`
+    (Cloudflare Worker + D1, user's own account, separate ingest/read tokens)
+    → `sync.py` pulls into the store (`source = 'cloud'`). See `docs/cloud.md`.
+    Cloud capture sends metadata to the user's own collector — the only path
+    where data leaves the machine.
 - `clients.toml` — prices (placeholders!) and client rules. Single source of
   truth for rules; the planned web view stays read-only.
 - `gen_sample.py` — synthetic logs, 2026-05..2026-10 with an Acme spike in August.
@@ -33,6 +38,9 @@ client or billing layer).
 ## Next steps
 1. ✅ Verified against real Claude Code logs on Windows (2026-10): field names
    match; Windows paths are normalized to "/" for rules and project names.
+   Finding: the first user works mostly in Claude Code cloud sessions → cloud
+   capture added; still to verify in a real cloud environment (setup script
+   + env vars reaching the Stop hook).
 2. Client-facing monthly report (print view) — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
