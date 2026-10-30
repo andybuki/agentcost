@@ -152,21 +152,25 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="agentcost")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("report", parents=[common], help="print a per-client table")
-    p.add_argument("--config", required=True)
+    p.add_argument("--config", default="clients.toml", help="default: clients.toml in this folder")
     p.add_argument("--month", help="YYYY-MM filter")
     p.add_argument("--csv", help="write per-client rows to CSV")
     p.set_defaults(fn=cmd_report)
     p = sub.add_parser("ingest", parents=[common], help="copy new log lines into the store")
     p.set_defaults(fn=cmd_ingest)
     p = sub.add_parser("serve", parents=[common], help="local web view")
-    p.add_argument("--config", required=True)
+    p.add_argument("--config", default="clients.toml", help="default: clients.toml in this folder")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--open", action="store_true", help="open the browser")
     p.set_defaults(fn=cmd_serve)
     p = sub.add_parser("doctor", parents=[common], help="show found logs, models and clients")
-    p.add_argument("--config", required=True)
+    p.add_argument("--config", default="clients.toml", help="default: clients.toml in this folder")
     p.set_defaults(fn=cmd_doctor)
 
     a = ap.parse_args(argv)
     a.logs = a.logs or default_log_dirs()
+    if hasattr(a, "config") and not Path(a.config).is_file():
+        ap.exit(2, f"agentcost: config file not found: {Path(a.config).resolve()}\n"
+                   "Run the command in the folder that contains clients.toml, "
+                   "or pass --config PATH.\n")
     a.fn(a)

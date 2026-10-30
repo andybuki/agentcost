@@ -54,3 +54,16 @@ def test_cli_writes_csv(config_path, write_log, tmp_path, capsys):
           "--db", str(tmp_path / "t.db"), "--csv", str(out)])
     assert "Total cost: 1.50 EUR" in capsys.readouterr().out
     assert out.read_text().splitlines()[1] == "Acme,1,1000000,0,0,0,1.5,2.25"
+
+def test_missing_config_gives_clear_error(tmp_path, monkeypatch, capsys):
+    import pytest
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as e:
+        main(["doctor", "--logs", str(tmp_path), "--db", str(tmp_path / "t.db")])
+    assert e.value.code == 2
+    assert "config file not found" in capsys.readouterr().err
+
+def test_config_defaults_to_clients_toml(config_path, write_log, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(config_path.parent)  # clients.toml lives here
+    main(["report", "--logs", str(write_log([make_entry()])), "--db", str(tmp_path / "t.db")])
+    assert "Total cost: 1.50 EUR" in capsys.readouterr().out
