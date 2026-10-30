@@ -75,8 +75,12 @@ settings. Two ways around it:
 A line like `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` after an
 error is a harmless crash of Node.js on Windows while exiting; ignore it.
 
-The last command prints a `database_id`. Paste it into `wrangler.toml` in place
-of `REPLACE-WITH-ID-FROM-wrangler-d1-create`. Then:
+The last command prints a `database_id` (also shown later by `npx wrangler d1 list`).
+Open `wrangler.toml` and paste it in place of `REPLACE-WITH-ID-FROM-wrangler-d1-create`,
+keeping the quotes. **Don't skip this**: otherwise the next command fails with
+`Invalid property: databaseId => Invalid uuid`. If wrangler offered to add the
+database to the config for you, make sure only one `[[d1_databases]]` block with
+`binding = "DB"` remains. Then:
 
 ```powershell
 npx wrangler d1 execute agentcost --remote --file=schema.sql
