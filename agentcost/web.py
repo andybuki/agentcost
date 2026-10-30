@@ -14,6 +14,7 @@ from . import analytics as A
 from .parse import log_files
 from .rules import UNASSIGNED, load_config
 from .store import connect, ingest, load_turns
+from .sync import CLOUD_CONFIG, load_cloud_config, sync_if_configured
 
 STATIC = Path(__file__).parent / "static"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -23,8 +24,9 @@ class BadRequest(Exception):
     pass
 
 class App:
-    def __init__(self, config, db, logs):
-        self.config, self.db = Path(config), db
+    def __init__(self, config, db, logs, cloud_config=CLOUD_CONFIG):
+        self.config, self.db, self.cloud_config = Path(config), db, cloud_config
+        self.sync_error = None
         self.logs = [logs] if isinstance(logs, (str, Path)) else list(logs)
         self.lock = threading.Lock()
         self._key = None
@@ -32,11 +34,13 @@ class App:
         self.refresh()
 
     def refresh(self):
-        """Ingest new log lines; returns the number of new turns."""
+        """Ingest new log lines and cloud turns; returns the number of new turns."""
         with self.lock:
             con = connect(self.db)
             try:
                 added = ingest(con, self.logs)
+                cloud, self.sync_error = sync_if_configured(con, self.cloud_config)
+                added += cloud
                 self.turns = load_turns(con)
             finally:
                 con.close()
@@ -77,6 +81,9 @@ class App:
             "has_clients": any(n != UNASSIGNED for n in orders["client"]),
             "turns_stored": len(self.turns),
             "log_dirs": self.log_status,
+            "cloud": {"configured": load_cloud_config(self.cloud_config) is not None,
+                      "turns": sum(1 for t in self.turns if t["source"] == "cloud"),
+                      "error": self.sync_error},
         }
 
     def report(self, q):
@@ -218,8 +225,8 @@ def make_handler(app, port):
 
     return Handler
 
-def serve(config, db, logs, port=8765, open_browser=False):
-    app = App(config, db, logs)
+def serve(config, db, logs, port=8765, open_browser=False, cloud_config=CLOUD_CONFIG):
+    app = App(config, db, logs, cloud_config)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app, port))
     url = f"http://127.0.0.1:{port}/"
     print(f"agentcost web view on {url}  (Ctrl+C to stop)")

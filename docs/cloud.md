@@ -1,0 +1,139 @@
+# Tracking Claude Code cloud sessions
+
+Cloud sessions (the ☁ ones in the Claude app, or claude.ai/code) run in a
+container on Anthropic's servers. Their logs never reach your PC, and the
+container is deleted after the session. To count them, each cloud session
+sends its usage **metadata** to a small collector in **your own Cloudflare
+account**, and `agentcost sync` downloads it to your PC.
+
+```
+cloud session ──(Stop hook, after each reply)──▶ your Cloudflare Worker + D1
+                                                        │
+your PC: python -m agentcost sync  ◀────────────────────┘
+```
+
+**What is sent:** time, folder (e.g. `/home/user/bankstm`), git branch,
+session id, model, token counts. **Never** prompts, answers or code.
+
+**Two tokens:** the *ingest* token (stored in your cloud environment) can only
+add rows. The *read* token (only on your PC) can only read them.
+
+Setup takes about 15 minutes, once. You need:
+- Node.js on your PC (for Cloudflare's `wrangler` tool): https://nodejs.org
+- a free Cloudflare account: https://dash.cloudflare.com/sign-up
+
+## 1. Create two tokens
+
+In PowerShell, run this twice and keep both values (e.g. in your password
+manager). The first is the **ingest token**, the second the **read token**:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+## 2. Deploy the collector to Cloudflare
+
+```powershell
+cd C:\Users\<you>\IdeaProjects\agentcost\cloud\worker
+npx wrangler login
+npx wrangler d1 create agentcost
+```
+
+The last command prints a `database_id`. Paste it into `wrangler.toml` in place
+of `REPLACE-WITH-ID-FROM-wrangler-d1-create`. Then:
+
+```powershell
+npx wrangler d1 execute agentcost --remote --file=schema.sql
+npx wrangler deploy
+npx wrangler secret put INGEST_TOKEN
+npx wrangler secret put READ_TOKEN
+```
+
+`wrangler secret put` asks for the value: paste the ingest and the read token.
+`wrangler deploy` prints your collector's address, like
+`https://agentcost.<your-subdomain>.workers.dev`. That is your **collector URL**.
+
+## 3. Connect your PC
+
+```powershell
+cd C:\Users\<you>\IdeaProjects\agentcost
+python -m agentcost sync --url https://agentcost.<your-subdomain>.workers.dev --token <READ token>
+```
+
+It should answer `0 new cloud turns`. The settings are saved in
+`~/.agentcost/cloud.json` (outside the repository). From now on `sync`, `serve`,
+`report` and `doctor` download new cloud turns automatically.
+
+## 4. Configure your cloud environment
+
+In the Claude app, open a cloud session, then the **environment menu in the
+session's title bar → Edit**. Do this for every environment you use.
+
+1. **Network access:** add your collector's host
+   (`agentcost.<your-subdomain>.workers.dev`) under *Allowed domains*. Leave
+   *Allow package managers* ticked. Without this, cloud sessions can't reach the
+   collector. Steps: https://code.claude.com/docs/en/cloud-environments#network-access
+2. **Environment variables:**
+   ```
+   AGENTCOST_URL=https://agentcost.<your-subdomain>.workers.dev
+   AGENTCOST_INGEST_TOKEN=<ingest token>
+   ```
+3. **Setup script:** copy the script to the clipboard and paste it into
+   *Setup script* (add it below anything that is already there):
+   ```powershell
+   python -m agentcost cloud-setup | Set-Clipboard
+   ```
+   It installs the hook into `~/.claude/settings.json` of each new cloud
+   session. It contains no tokens.
+
+## 5. Check
+
+Start a **new** cloud session (the setup script runs at session start), let
+Claude answer once, then on your PC:
+
+```powershell
+python -m agentcost doctor
+```
+
+Under *Store* the number of **cloud** turns should go up. The web view shows
+"N turns from cloud sessions" in the header.
+
+## Assigning cloud work to clients
+
+Cloud sessions run in `/home/user/<repository name>`, so client rules match
+the repository name:
+
+```toml
+[[client]]
+name = "Bank project"
+cwd = ["/home/user/bankstm", "/home/user/BankingStatement"]
+```
+
+`python -m agentcost doctor` lists these folders under *Folders without a client*.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| `sync` says "wrong read token" | `--token` must be the **read** token. Re-run step 3 with the right one. |
+| `sync` says "not reachable" | Collector URL correct? Open it in a browser: it should show `{"service":"agentcost collector"}`. |
+| No new cloud turns | Was the session started **after** step 4? Is the host allowed under Network access? Are the variable names exactly `AGENTCOST_URL` and `AGENTCOST_INGEST_TOKEN`? |
+| Still nothing | In a cloud session, ask Claude to run `python3 ~/.agentcost-hook/agentcost_hook.py check`. It sends right away and prints what went wrong (missing variables, blocked host, wrong token). If the file doesn't exist, the setup script didn't run: check step 4.3. |
+
+**Leaked token?** Create a new one (step 1), run `npx wrangler secret put`
+again, and update the cloud environment variable or `sync --token`.
+
+**Costs:** one person's usage should fit Cloudflare's free tier for Workers and
+D1. Check Cloudflare's current limits if you track a whole team.
+
+## Develop / test locally
+
+The Worker runs locally with a stand-in for D1 (needs Node.js 22.5+):
+
+```powershell
+cd cloud\worker
+node --test test/worker.test.mjs
+$env:INGEST_TOKEN="a"; $env:READ_TOKEN="b"; node test/dev-server.mjs 8787
+```
+
+`tests/test_cloud.py` runs hook → Worker → sync end to end.

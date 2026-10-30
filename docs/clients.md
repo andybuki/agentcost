@@ -14,7 +14,7 @@ computer** (`~/.claude/projects`, on Windows `C:\Users\<you>\.claude\projects`).
 | Claude Code in a terminal (`claude`) | yes | ✅ |
 | Claude Code in VS Code / JetBrains | yes | ✅ |
 | Claude desktop app, **Code** tab, on a local folder | should be | ✅ check with `doctor` (see below) |
-| Claude Code on the web (claude.ai/code), cloud sessions | no, they run in a cloud container | ❌ |
+| Claude Code on the web (claude.ai/code), cloud sessions | no, they run in a cloud container | ✅ after a one-time setup: [cloud.md](cloud.md) |
 | Chat in the Claude desktop app or claude.ai | no, chats are stored by Anthropic | ❌ |
 | ChatGPT, DeepSeek, other tools | no | ❌ (planned: manual cost entries) |
 

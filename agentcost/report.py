@@ -11,6 +11,8 @@ Usage:
   python -m agentcost ingest
   python -m agentcost serve --config clients.toml [--port 8765] [--open]
   python -m agentcost doctor --config clients.toml   # what was found, what is missing
+  python -m agentcost sync [--url URL --token READ_TOKEN]   # cloud sessions, see docs/cloud.md
+  python -m agentcost cloud-setup                    # setup script for cloud environments
 
 Common options: --logs DIR (repeatable; default: $CLAUDE_CONFIG_DIR/projects,
                 ~/.config/claude/projects and ~/.claude/projects),
@@ -25,6 +27,15 @@ from . import analytics as A
 from .parse import default_log_dirs, log_files
 from .rules import UNASSIGNED, load_config, price_for
 from .store import DEFAULT_DB, connect, ingest, load_turns
+from .sync import CLOUD_CONFIG, SyncError, load_cloud_config, save_cloud_config, sync, sync_if_configured
+
+def collect(con, a):
+    """Read new local log lines and, if configured, new cloud turns. Returns (local, cloud)."""
+    local = ingest(con, a.logs)
+    cloud, err = sync_if_configured(con, a.cloud_config)
+    if err:
+        print(f"WARNING: cloud sync failed: {err}", file=sys.stderr)
+    return local, cloud
 
 def aggregate(turns, cfg, rules, month=None):
     """Return (rows, header, unpriced_models); rows sorted by cost, descending.
@@ -65,7 +76,7 @@ def print_subscription(cfg, month, total):
 def cmd_report(a):
     cfg, rules = load_config(a.config)
     con = connect(a.db)
-    ingest(con, a.logs)
+    collect(con, a)
     rows, hdr, unpriced = aggregate(load_turns(con), cfg, rules, a.month)
     con.close()
     print_table(rows, hdr, a.month or "(all time)")
@@ -78,10 +89,58 @@ def cmd_report(a):
 
 def cmd_ingest(a):
     con = connect(a.db)
-    added = ingest(con, a.logs)
+    local, cloud = collect(con, a)
     total = con.execute("SELECT COUNT(*) FROM turns").fetchone()[0]
     con.close()
-    print(f"{added} new turns ingested, {total} stored in {a.db}")
+    print(f"{local} new local and {cloud} new cloud turns, {total} stored in {a.db}")
+
+def cmd_sync(a):
+    if a.url or a.token:
+        if not (a.url and a.token):
+            sys.exit("agentcost: give both --url and --token (the READ token)")
+        save_cloud_config(a.url, a.token, a.cloud_config)
+        print(f"Saved collector settings to {Path(a.cloud_config).expanduser()}")
+    cfg = load_cloud_config(a.cloud_config)
+    if not cfg:
+        sys.exit("agentcost: no collector configured. Run once with --url URL --token READ_TOKEN "
+                 "(see docs/cloud.md).")
+    con = connect(a.db)
+    try:
+        added = sync(con, cfg["url"], cfg["read_token"])
+    except SyncError as e:
+        sys.exit(f"agentcost: sync failed: {e}")
+    total = con.execute("SELECT COUNT(*) FROM turns WHERE source = 'cloud'").fetchone()[0]
+    con.close()
+    print(f"{added} new cloud turns from {cfg['url']} ({total} cloud turns stored)")
+
+SETUP_SCRIPT = """#!/bin/bash
+# agentcost: report usage metadata of Claude Code cloud sessions to your collector.
+# Paste into the cloud environment's "Setup script". Set AGENTCOST_URL and
+# AGENTCOST_INGEST_TOKEN as environment variables of the same environment.
+# Sends only time, folder, branch, model and token counts — never prompts or code.
+mkdir -p ~/.agentcost-hook
+cat > ~/.agentcost-hook/agentcost_hook.py <<'AGENTCOST_HOOK_EOF'
+{hook}AGENTCOST_HOOK_EOF
+python3 - <<'AGENTCOST_SETTINGS_EOF'
+import json, pathlib
+p = pathlib.Path.home() / ".claude" / "settings.json"
+p.parent.mkdir(parents=True, exist_ok=True)
+s = json.loads(p.read_text()) if p.exists() else {{}}
+cmd = "python3 ~/.agentcost-hook/agentcost_hook.py"
+stop = s.setdefault("hooks", {{}}).setdefault("Stop", [])
+if not any(h.get("command") == cmd for e in stop for h in e.get("hooks", [])):
+    stop.append({{"hooks": [{{"type": "command", "command": cmd, "timeout": 15}}]}})
+p.write_text(json.dumps(s, indent=2))
+AGENTCOST_SETTINGS_EOF
+"""
+
+def setup_script():
+    hook = (Path(__file__).parent / "cloud_hook.py").read_text()
+    assert "AGENTCOST_HOOK_EOF" not in hook
+    return SETUP_SCRIPT.format(hook=hook if hook.endswith("\n") else hook + "\n")
+
+def cmd_cloud_setup(a):
+    print(setup_script(), end="")
 
 def fmt_tokens(n):
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.1f}k" if n >= 1e3 else str(n)
@@ -94,10 +153,15 @@ def cmd_doctor(a):
         n = len(log_files(d)) if d.is_dir() else 0
         print(f"  {'found  ' if d.is_dir() else 'missing'} {d}" + (f"  ({n} log files)" if d.is_dir() else ""))
     con = connect(a.db)
-    added = ingest(con, a.logs)
+    added, cloud_added = collect(con, a)
     turns = load_turns(con)
     con.close()
-    print(f"\nStore: {a.db} — {len(turns)} turns ({added} new)")
+    cloud_cfg = load_cloud_config(a.cloud_config)
+    print(f"\nCloud sessions: " + (f"collector {cloud_cfg['url']} ({cloud_added} new turns)"
+                                   if cloud_cfg else "not set up (see docs/cloud.md)"))
+    n_cloud = sum(1 for t in turns if t["source"] == "cloud")
+    print(f"\nStore: {a.db} — {len(turns)} turns ({len(turns) - n_cloud} local, {n_cloud} cloud; "
+          f"{added + cloud_added} new)")
     if not turns:
         print("\nNo usage found. Is Claude Code writing logs to one of the folders above?"
               "\nPass the right folder with --logs DIR.")
@@ -138,7 +202,7 @@ def cmd_doctor(a):
 
 def cmd_serve(a):
     from .web import serve
-    serve(a.config, a.db, a.logs, a.port, a.open)
+    serve(a.config, a.db, a.logs, a.port, a.open, a.cloud_config)
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
@@ -148,6 +212,7 @@ def main(argv=None):
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--logs", action="append", help="log folder (repeatable)")
     common.add_argument("--db", default=DEFAULT_DB)
+    common.add_argument("--cloud-config", default=CLOUD_CONFIG, help=argparse.SUPPRESS)
 
     ap = argparse.ArgumentParser(prog="agentcost")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -166,6 +231,12 @@ def main(argv=None):
     p = sub.add_parser("doctor", parents=[common], help="show found logs, models and clients")
     p.add_argument("--config", default="clients.toml", help="default: clients.toml in this folder")
     p.set_defaults(fn=cmd_doctor)
+    p = sub.add_parser("sync", parents=[common], help="download cloud-session turns from your collector")
+    p.add_argument("--url", help="collector URL (saved for next time)")
+    p.add_argument("--token", help="READ token (saved for next time)")
+    p.set_defaults(fn=cmd_sync)
+    p = sub.add_parser("cloud-setup", parents=[common], help="print the setup script for cloud environments")
+    p.set_defaults(fn=cmd_cloud_setup)
 
     a = ap.parse_args(argv)
     a.logs = a.logs or default_log_dirs()
