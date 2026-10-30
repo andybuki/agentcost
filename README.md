@@ -72,6 +72,10 @@ python -m pytest
 
 ## Configuration
 
+**How to split work by client:** see [docs/clients.md](docs/clients.md) —
+what agentcost can see, how folders and branches map to clients, and
+recommended folder setups.
+
 See `clients.toml`. Prices are USD per million tokens — the shipped values are
 placeholders, verify against the provider's current price list.
 Branch rules take priority over directory rules, so a shared monorepo can be

@@ -119,6 +119,18 @@ def cmd_doctor(a):
     for r in rules:
         print(f"  {r['name']:32} {counts.get(r['name'], 0):>7} turns")
     print(f"  {UNASSIGNED:32} {counts.get(UNASSIGNED, 0):>7} turns")
+
+    # Which folders still need a rule, newest work first.
+    folders = {}
+    for r in recs:
+        if r["client"] == UNASSIGNED:
+            f = folders.setdefault(r["cwd"] or "(no folder)", {"turns": 0, "last": r["day"]})
+            f["turns"] += 1
+            f["last"] = max(f["last"], r["day"])
+    if folders:
+        print("\nFolders without a client (add a [[client]] rule, see docs/clients.md):")
+        for cwd, f in sorted(folders.items(), key=lambda kv: kv[1]["last"], reverse=True)[:15]:
+            print(f"  {cwd}  ({f['turns']} turns, last {f['last']})")
     if unpriced:
         print("\nTo price the missing models, add to clients.toml (USD per million tokens):")
         for m in sorted(unpriced):
