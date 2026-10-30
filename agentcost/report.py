@@ -13,6 +13,8 @@ Usage:
   python -m agentcost doctor --config clients.toml   # what was found, what is missing
   python -m agentcost sync [--url URL --token READ_TOKEN]   # cloud sessions, see docs/cloud.md
   python -m agentcost cloud-setup                    # setup script for cloud environments
+  python -m agentcost tokens                         # new ingest + read token pair
+  python -m agentcost collector [--host H --port P]  # self-hosted collector (instead of Cloudflare)
 
 Common options: --logs DIR (repeatable; default: $CLAUDE_CONFIG_DIR/projects,
                 ~/.config/claude/projects and ~/.claude/projects),
@@ -142,6 +144,24 @@ def setup_script():
 def cmd_cloud_setup(a):
     print(setup_script(), end="")
 
+def cmd_tokens(a):
+    import secrets
+    print(f"INGEST token (cloud environment, AGENTCOST_INGEST_TOKEN): {secrets.token_urlsafe(32)}")
+    print(f"READ token   (your PC, agentcost sync --token):          {secrets.token_urlsafe(32)}")
+
+def cmd_collector(a):
+    import os
+    from .collector import serve_collector
+    ingest_token = os.environ.get("AGENTCOST_INGEST_TOKEN")
+    read_token = os.environ.get("AGENTCOST_READ_TOKEN")
+    if not (ingest_token and read_token):
+        sys.exit("agentcost: set AGENTCOST_INGEST_TOKEN and AGENTCOST_READ_TOKEN "
+                 "(create them with: python -m agentcost tokens)")
+    try:
+        serve_collector(a.db, a.host, a.port, ingest_token, read_token)
+    except ValueError as e:
+        sys.exit(f"agentcost: {e}")
+
 def fmt_tokens(n):
     return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.1f}k" if n >= 1e3 else str(n)
 
@@ -237,9 +257,17 @@ def main(argv=None):
     p.set_defaults(fn=cmd_sync)
     p = sub.add_parser("cloud-setup", parents=[common], help="print the setup script for cloud environments")
     p.set_defaults(fn=cmd_cloud_setup)
+    p = sub.add_parser("tokens", help="create a new ingest + read token pair")
+    p.set_defaults(fn=cmd_tokens)
+    p = sub.add_parser("collector", help="run a self-hosted collector (instead of Cloudflare)")
+    p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to accept connections from outside")
+    p.add_argument("--port", type=int, default=8787)
+    p.add_argument("--db", default="~/.agentcost/collector.db")
+    p.set_defaults(fn=cmd_collector)
 
     a = ap.parse_args(argv)
-    a.logs = a.logs or default_log_dirs()
+    if hasattr(a, "logs"):
+        a.logs = a.logs or default_log_dirs()
     if hasattr(a, "config") and not Path(a.config).is_file():
         ap.exit(2, f"agentcost: config file not found: {Path(a.config).resolve()}\n"
                    "Run the command in the folder that contains clients.toml, "
