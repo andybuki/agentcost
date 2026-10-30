@@ -5,6 +5,14 @@
 currency_symbol = "EUR"
 currency_rate = 0.92       # USD -> EUR
 default_markup = 1.0       # billable = cost * markup
+timezone = "Europe/Berlin" # days and months are counted in this time zone
+
+# Optional: flat-rate plan. The web view shows the fee next to the
+# API-equivalent cost. Remove this section if you pay per token.
+[subscription]
+name = "Claude Max"
+monthly_fee = 180.0        # in currency_symbol (example value)
+since = 2026-05-01         # optional: no fee counted before this date
 
 [prices."claude-opus"]
 input = 15.0

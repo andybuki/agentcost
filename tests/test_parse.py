@@ -6,7 +6,7 @@ def test_extracts_metadata(write_log):
                                         "cache_creation_input_tokens": 3,
                                         "cache_read_input_tokens": 4})])
     (t,) = iter_turns(logs)
-    assert t == {"ts": "2026-10-01T10:00:00Z", "session": "s1", "cwd": "/projects/acme-x",
+    assert t == {"msg_id": "msg_1", "request_id": "req_1", "ts": "2026-10-01T10:00:00Z", "session": "s1", "cwd": "/projects/acme-x",
                  "branch": "main", "model": "claude-sonnet-3",
                  "in": 1, "out": 2, "cw": 3, "cr": 4}
 

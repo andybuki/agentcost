@@ -50,6 +50,6 @@ def test_rows_sorted_by_cost(config_path, write_log):
 def test_cli_writes_csv(config_path, write_log, tmp_path, capsys):
     out = tmp_path / "r.csv"
     main(["--config", str(config_path), "--logs", str(write_log([make_entry()])),
-          "--csv", str(out)])
+          "--db", str(tmp_path / "t.db"), "--csv", str(out)])
     assert "Total cost: 1.50 EUR" in capsys.readouterr().out
     assert out.read_text().splitlines()[1] == "Acme,1,1000000,0,0,0,1.5,2.25"

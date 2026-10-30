@@ -44,7 +44,7 @@ Status: done except step 4 (needs real logs).
    compare.
 4. Sanity check against real `~/.claude/projects` logs (CLAUDE.md step 1).
 
-## Phase 1 — local store
+## Phase 1 — local store ✅
 
 Table `turns` (one row per deduped assistant message):
 
@@ -59,28 +59,26 @@ Design decisions:
 - **Store raw tokens, not cost.** Client and price are computed at query time
   from `clients.toml`, so fixing a rule or a price instantly re-attributes all
   history. (Optional later: snapshot prices per month for invoiced periods.)
-- `agentcost ingest` — incremental (remember file size/mtime per file).
+- `agentcost ingest` — incremental (remembers size/mtime/byte offset per file;
+  a half-written last line is left for the next run).
   `serve` runs an ingest on start and on a "Refresh" button.
 - Timezone: store UTC, group by local time (`Europe/Berlin` default,
   configurable) — a turn at 00:30 CET belongs to the next day/month.
 
-## Phase 2 — JSON API (stdlib `http.server`, no new dependencies)
+## Phase 2 — JSON API ✅ (stdlib `http.server`, no new dependencies)
 
-`agentcost serve [--port 8765]` → binds to `127.0.0.1` only.
+`agentcost serve [--port 8765]` → binds to `127.0.0.1` only, rejects foreign
+`Host` headers (DNS rebinding), strict CSP. Built as one report endpoint instead
+of five, since the page always needs all parts together:
 
 | endpoint | returns |
 |---|---|
-| `GET /api/summary?from=&to=` | totals: cost, billable, margin, tokens, sessions |
-| `GET /api/timeseries?from=&to=&bucket=day\|week\|month&by=client\|model\|project` | stacked series |
-| `GET /api/breakdown?from=&to=&by=client\|model\|project\|session` | table rows |
-| `GET /api/compare?a_from=&a_to=&b_from=&b_to=&by=client` | A, B, Δ abs, Δ % per row |
-| `GET /api/unassigned?from=&to=` | top cwd/branch combos without a client (to write rules) |
-| `GET /api/export.csv?...` | same as breakdown, CSV |
+| `GET /api/meta` | currency, timezone, data range, stable color order per dimension, subscription |
+| `GET /api/report?from=&to=&cmp=prev\|yoy\|custom\|none&by=client\|project\|model&bucket=auto\|day\|week\|month[&client=]` | summary + comparison summary, subscription fee, time series (+ comparison line), comparison table, model mix, unassigned |
+| `GET /api/export.csv?…` | comparison table as CSV |
+| `POST /api/refresh` | ingest new log lines |
 
-All money in the configured currency; every response carries `currency`,
-`price_source` and a list of unpriced models so the UI can warn.
-
-## Phase 3 — web view (single page, vanilla JS, inline SVG charts)
+## Phase 3 — web view ✅ (single page, vanilla JS, inline SVG charts)
 
 No build step, no framework, no CDN. Layout top → bottom:
 
@@ -120,11 +118,13 @@ bookmarked.
 | # | PR | size |
 |---|---|---|
 | 1 | ✅ Package split + pytest + multi-month sample data | S |
-| 2 | SQLite store + `ingest` command; CLI reads from DB | M |
-| 3 | `serve` + JSON API (+ API tests) | M |
-| 4 | Web view: period bar, KPI tiles, comparison table | M |
-| 5 | Web view: trend chart, model mix, unassigned panel, CSV | M |
+| 2 | ✅ SQLite store + `ingest` command; CLI reads from DB | M |
+| 3 | ✅ `serve` + JSON API (+ API tests) | M |
+| 4 | ✅ Web view: period bar, KPI tiles, comparison table | M |
+| 5 | ✅ Web view: trend chart, model mix, unassigned panel, CSV | M |
 | 6 | Client monthly report (print view) | S |
+
+PRs 2–5 landed together in one change.
 
 ## Decisions
 
@@ -134,11 +134,13 @@ bookmarked.
    [subscription]
    name = "Claude Max"
    monthly_fee = 180.0   # in currency_symbol
+   since = 2026-05-01    # optional: no fee before the plan started
    ```
    The web view shows, per period, the actual flat fee (pro-rated for
    partial periods) next to the API-equivalent cost, plus the ratio
    ("API-equivalent is 3.2× your fee"). Client billing still uses the
    API-equivalent cost × markup. No `[subscription]` section → pay-per-use,
-   the fee tile is hidden.
+   the fee tile is hidden. It is also hidden when drilled into one client,
+   since the fee covers all clients.
 3. **Rule editing:** `clients.toml` is the only place rules are edited. The web
    view is read-only; the unassigned panel generates TOML snippets to paste in.

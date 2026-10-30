@@ -18,7 +18,13 @@ client or billing layer).
     lines by (message.id, requestId).
   - `rules.py` — attribution by branch regex then cwd regex, pricing via
     longest model-prefix match.
-  - `report.py` — aggregation, markup, table / CSV output.
+  - `store.py` — SQLite store (`~/.agentcost/agentcost.db`), incremental ingest;
+    raw tokens only, so history survives Claude Code's 30-day log cleanup.
+  - `analytics.py` — local-time enrichment (client, project, cost), period
+    comparison, time series, subscription fee, unassigned rule snippets.
+  - `report.py` — CLI (`report` / `ingest` / `serve`), table / CSV output.
+  - `web.py` + `static/` — local web view on 127.0.0.1, vanilla JS + SVG,
+    no external requests. Read-only.
 - `clients.toml` — prices (placeholders!) and client rules. Single source of
   truth for rules; the planned web view stays read-only.
 - `gen_sample.py` — synthetic logs, 2026-05..2026-10 with an Acme spike in August.
@@ -26,7 +32,7 @@ client or billing layer).
 
 ## Next steps
 1. Verify against real Claude Code logs; adjust field names if the format differs.
-2. SQLite store + web view with period comparison — see `PLAN.md`.
+2. Client-facing monthly report (print view) — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
 5. Client-facing monthly report (HTML/PDF), export for DATEV / sevDesk.
