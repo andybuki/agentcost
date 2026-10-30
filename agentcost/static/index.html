@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentcost</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>agentcost</h1>
+    <span id="data-range" class="muted"></span>
+  </div>
+  <button id="refresh" type="button" title="Read new lines from the agent logs">Refresh data</button>
+</header>
+
+<main>
+  <section class="filters" aria-label="Filters">
+    <div class="presets" role="group" aria-label="Period">
+      <button type="button" data-preset="this-month">This month</button>
+      <button type="button" data-preset="last-month">Last month</button>
+      <button type="button" data-preset="last-30">Last 30 days</button>
+      <button type="button" data-preset="this-quarter">This quarter</button>
+      <button type="button" data-preset="ytd">Year to date</button>
+      <button type="button" data-preset="last-12m">Last 12 months</button>
+    </div>
+    <div class="controls">
+      <label>From <input type="date" id="from"></label>
+      <label>To <input type="date" id="to"></label>
+      <label>Compare with
+        <select id="cmp">
+          <option value="prev">Previous period</option>
+          <option value="yoy">Same period last year</option>
+          <option value="custom">Custom…</option>
+          <option value="none">Nothing</option>
+        </select>
+      </label>
+      <span id="cmp-custom" hidden>
+        <label>From <input type="date" id="cmp_from"></label>
+        <label>To <input type="date" id="cmp_to"></label>
+      </span>
+      <label>Group by
+        <select id="by">
+          <option value="client">Client</option>
+          <option value="project">Project</option>
+          <option value="model">Model</option>
+        </select>
+      </label>
+      <label>Bars per
+        <select id="bucket">
+          <option value="auto">Auto</option>
+          <option value="day">Day</option>
+          <option value="week">Week</option>
+          <option value="month">Month</option>
+        </select>
+      </label>
+    </div>
+  </section>
+
+  <nav id="crumbs" class="crumbs" hidden></nav>
+  <div id="warnings"></div>
+  <p id="period-label" class="period-label"></p>
+
+  <section id="kpis" class="kpis" aria-label="Totals"></section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Cost over time</h2>
+      <div id="legend" class="legend"></div>
+    </div>
+    <div id="trend" class="chart"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2 id="table-title">Comparison</h2>
+      <a id="export" class="button-link" href="#" download>Export CSV</a>
+    </div>
+    <div class="table-wrap"><table id="table"></table></div>
+    <p class="hint" id="table-hint"></p>
+  </section>
+
+  <div class="two-col">
+    <section class="card">
+      <h2>Model mix</h2>
+      <div id="models"></div>
+    </section>
+    <section class="card" id="unassigned-card">
+      <h2>Unassigned work</h2>
+      <p class="hint">Not matched by any rule in <code>clients.toml</code>. Paste a snippet
+        there, adjust the name, then reload this page.</p>
+      <div id="unassigned"></div>
+    </section>
+  </div>
+</main>
+
+<div id="tooltip" class="tooltip" role="status" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
