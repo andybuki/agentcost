@@ -431,7 +431,16 @@ async function init() {
     : "no data yet — run Claude Code, then Refresh";
   const fromUrl = new URLSearchParams(location.search);
   readUrl();
-  if (!state.from || !state.to) applyPreset(state.preset || "this-month");
+  if (!state.from || !state.to) {
+    applyPreset(state.preset || "this-month");
+    // Don't open on an empty month: fall back to the latest month with data.
+    if (!fromUrl.has("preset") && meta.last_day && meta.last_day < state.from) {
+      const last = parse(meta.last_day);
+      state.from = iso(new Date(last.getFullYear(), last.getMonth(), 1));
+      state.to = iso(monthEnd(last.getFullYear(), last.getMonth()));
+      state.preset = "";
+    }
+  }
   if (!fromUrl.has("by") && !meta.has_clients) state.by = "model";
   // Cost would hide the usage of unpriced models, so start with tokens then.
   if (!fromUrl.has("metric") && meta.unpriced.length) state.metric = "tokens";

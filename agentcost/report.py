@@ -83,6 +83,9 @@ def cmd_ingest(a):
     con.close()
     print(f"{added} new turns ingested, {total} stored in {a.db}")
 
+def fmt_tokens(n):
+    return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.1f}k" if n >= 1e3 else str(n)
+
 def cmd_doctor(a):
     """Explain what agentcost sees. Prints metadata only (paths, models, counts)."""
     print("Log folders:")
@@ -109,7 +112,7 @@ def cmd_doctor(a):
         g = by_model[model]
         price = price_for(cfg["prices"], model)
         note = f"{g['cost']:.2f} {cfg.get('currency_symbol', 'USD')}" if price else "NO PRICE in clients.toml"
-        print(f"  {model:32} {n:>7} turns  {g['tokens'] / 1e6:>9.1f}M tokens  {note}")
+        print(f"  {model:32} {n:>7} turns  {fmt_tokens(g['tokens']):>8} tokens  {note}")
 
     print("\nClients:")
     counts = Counter(r["client"] for r in recs)

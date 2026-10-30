@@ -86,3 +86,15 @@ def test_subscription_since():
     cfg = {"subscription": {"monthly_fee": 300, "since": date(2026, 9, 21)}}
     assert A.subscription_fee(cfg, date(2026, 9, 1), date(2026, 9, 30)) == 100
     assert A.subscription_fee(cfg, date(2026, 8, 1), date(2026, 8, 31)) == 0
+
+def test_windows_project_name_and_snippet(config_path):
+    import re
+    rs = recs(config_path, [make_entry(cwd=r"C:\Users\me\IdeaProjects\agentcost")])
+    assert rs[0]["project"] == "agentcost"
+    (row,) = A.unassigned(rs)
+    assert row["cwd"] == "C:/Users/me/IdeaProjects/agentcost"
+    cfg_text = (config_path.read_text() + "\n" + row["snippet"]).replace('"New client"', '"Mine"')
+    config_path.write_text(cfg_text)
+    from agentcost.rules import load_config as lc, attribute
+    _, rules = lc(config_path)
+    assert attribute(rules, r"C:\Users\me\IdeaProjects\agentcost", "main") == "Mine"

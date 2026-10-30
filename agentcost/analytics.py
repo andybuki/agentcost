@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from pathlib import PurePosixPath
 from zoneinfo import ZoneInfo
 
-from .rules import UNASSIGNED, attribute, price_for, turn_cost
+from .rules import UNASSIGNED, attribute, normalize_path, price_for, turn_cost
 
 OTHER = "Other"
 DIMENSIONS = ("client", "project", "model")
@@ -45,8 +45,8 @@ def enrich(turns, cfg, rules):
         cost = turn_cost(t, p) * rate if p else 0.0
         out.append({
             "day": dt.date(), "client": client, "model": model,
-            "project": PurePosixPath(t["cwd"] or "").name or "(none)",
-            "session": t["session"], "cwd": t["cwd"], "branch": t["branch"],
+            "project": PurePosixPath(normalize_path(t["cwd"])).name or "(none)",
+            "session": t["session"], "cwd": normalize_path(t["cwd"]), "branch": t["branch"],
             "in": t["in"], "out": t["out"], "cw": t["cw"], "cr": t["cr"],
             "cost": cost, "billable": cost * markups.get(client, 0.0), "priced": p is not None,
         })
