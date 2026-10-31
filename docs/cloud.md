@@ -135,41 +135,46 @@ A cloud **environment** is a saved set of settings that every new cloud
 session starts with. You change **the environment your sessions already use**.
 Don't create a new one, unless you then also start your sessions in it.
 
-### 4.1 Find the right environment
+### 4.1 Open the environment's settings
 
-When you start a cloud session, the environment is shown next to the
-repository (and in the session's title bar). Most accounts use the one created
-during onboarding, e.g. **"Default Cloud Environment"**. Open it:
-**environment name in the title bar → Edit** (or the settings icon next to it
-when you start a new session).
+Edit the environment your sessions run in. Most accounts use the one created
+during onboarding, **"Default Cloud Environment"**. Two ways to open it:
+
+- **From a running cloud session:** click the small arrow (⌄) next to the
+  session title at the top → **Edit cloud environment**.
+- **From the new-session screen:** click the first control under the message
+  box (the environment selector) → find the environment under **Cloud** (or
+  under **More**) → hover over it → click the **settings icon** on its right.
 
 ### 4.2 Fill in the fields
 
-The edit dialog has several fields. Each value goes into a **different** field:
+The dialog has the rows **Network access**, **Setup script**, **Environment
+variables**, **Network secrets** and **Who can use it**. You need three of them:
 
-| Field | What to put there |
-|---|---|
-| **Name** | leave it as it is (e.g. `Default Cloud Environment`). **Never** put URLs or tokens here: the name is just a label, it does nothing, and it is visible in lists. |
-| **Network access** | if it is set to a limited level: add `agentcost.<your-subdomain>.workers.dev` under *Allowed domains* (only the host, no `https://`, no `/`). Leave *Allow package managers* ticked. With full access, nothing to do. |
-| **Environment variables** | two lines, exactly like this (no spaces around `=`, no quotes): |
+**Environment variables** — two lines, `KEY=value`, no quotes:
 
 ```
 AGENTCOST_URL=https://agentcost.<your-subdomain>.workers.dev
 AGENTCOST_INGEST_TOKEN=<ingest token>
 ```
 
-Use the field called *Environment variables*, not *Network secrets* /
-*API credentials* — the hook reads normal environment variables.
+(Not *Network secrets*: the hook reads normal environment variables.)
 
-| Field | What to put there |
-|---|---|
-| **Setup script** | the agentcost setup script. On your PC run the command below, then paste into the field (below anything already there). It contains no tokens. |
+**Setup script** — on your PC run the command below, then paste into the field
+(below anything already there). It contains no tokens.
 
 ```powershell
 python -m agentcost cloud-setup | Set-Clipboard
 ```
 
-Then **Save**.
+**Network access** — only if it is set to a limited level: add
+`agentcost.<your-subdomain>.workers.dev` under *Allowed domains* (host only, no
+`https://`). Leave *Allow package managers* ticked.
+
+Then click **Save changes**.
+
+Don't create a new environment for this, and never put URLs or tokens into an
+environment's name: the name is only a label.
 
 ### 4.3 Start a new session
 
@@ -223,7 +228,7 @@ cwd = ["/home/user/bankstm", "/home/user/BankingStatement"]
 |---|---|
 | `sync` says "wrong read token" | `--token` must be the **read** token. Re-run step 3 with the right one. |
 | `sync` says "not reachable" | Collector URL correct? Open it in a browser: it should show `{"service":"agentcost collector"}`. |
-| Variables typed into the environment's **Name** | The name is only a label. Put them into *Environment variables* (step 4.2). If a token ended up in a name, it is visible: create a new ingest token (`python -m agentcost tokens`), set it with `npx wrangler secret put INGEST_TOKEN` and in the environment variable, and rename or delete that environment. |
+| Variables typed into the environment's **Name** | The name is only a label. Put them into *Environment variables* (step 4.2). If a token ended up in a name, it is visible: create a new ingest token (`python -m agentcost tokens`), set it with `npx wrangler secret put INGEST_TOKEN` and in the environment variable, and archive that environment (its settings → **Archive environment**; environments can't be deleted). |
 | No new cloud turns | Was the session started **after** step 4? Is the host allowed under Network access? Are the variable names exactly `AGENTCOST_URL` and `AGENTCOST_INGEST_TOKEN`? |
 | Still nothing | In a cloud session, ask Claude to run `python3 ~/.agentcost-hook/agentcost_hook.py check`. It sends right away and prints what went wrong (missing variables, blocked host, wrong token). If the file doesn't exist, the setup script didn't run: check step 4.3. |
 
