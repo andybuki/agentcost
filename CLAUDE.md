@@ -41,8 +41,10 @@ client or billing layer).
 1. ✅ Verified against real Claude Code logs on Windows (2026-10): field names
    match; Windows paths are normalized to "/" for rules and project names.
    Finding: the first user works mostly in Claude Code cloud sessions → cloud
-   capture added; still to verify in a real cloud environment (setup script
-   + env vars reaching the Stop hook).
+   capture added. ✅ Verified end to end in a real cloud environment with a
+   deployed Cloudflare Worker (2026-10-31). Lessons: Cloudflare blocks the
+   default Python-urllib User-Agent (error 1010); users typed variables into
+   the environment *name*; wrong secret pasted (Account ID) → see docs/cloud.md.
 2. Client-facing monthly report (print view) — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
