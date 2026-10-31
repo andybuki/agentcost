@@ -92,6 +92,7 @@ def save_state(state):
 
 def run(hook_input, url, token):
     path = hook_input.get("transcript_path")
+    token = (token or "").strip()
     if not (url and token and path and os.path.isfile(path)):
         return 0
     state = load_state()

@@ -34,7 +34,7 @@ def save_cloud_config(url, read_token, path=CLOUD_CONFIG):
         pass
 
 def _get(url, token):
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token.strip()}",
                                                "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
