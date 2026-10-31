@@ -50,8 +50,37 @@ npx wrangler login
 npx wrangler d1 create agentcost
 ```
 
-The last command prints a `database_id`. Paste it into `wrangler.toml` in place
-of `REPLACE-WITH-ID-FROM-wrangler-d1-create`. Then:
+**If `wrangler login` fails** (e.g. `OAuth error: request_forbidden … No CSRF
+value available in the session cookie`): the browser that opened didn't keep
+Cloudflare's login cookie. Common on managed/company PCs or with strict cookie
+settings. Two ways around it:
+
+1. Log in at https://dash.cloudflare.com in your **default** browser first,
+   then run `npx wrangler login` again. If another browser opens than the one
+   you're logged in with, copy the long link wrangler prints into the right one.
+2. Skip the browser login and use an API token instead (works always):
+   - Dashboard → profile icon → **My Profile → API Tokens → Create Token** →
+     template **"Edit Cloudflare Workers"** → under *Permissions* add
+     **Account · D1 · Edit** → Continue → Create. Copy the token.
+   - Your **Account ID** is on the dashboard's *Workers & Pages* overview (right side).
+   - In the same PowerShell window:
+     ```powershell
+     $env:CLOUDFLARE_API_TOKEN = "<API token>"
+     $env:CLOUDFLARE_ACCOUNT_ID = "<Account ID>"
+     npx wrangler whoami
+     ```
+     `whoami` should show your account. Then continue with
+     `npx wrangler d1 create agentcost` — no `wrangler login` needed.
+
+A line like `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` after an
+error is a harmless crash of Node.js on Windows while exiting; ignore it.
+
+The last command prints a `database_id` (also shown later by `npx wrangler d1 list`).
+Open `wrangler.toml` and paste it in place of `REPLACE-WITH-ID-FROM-wrangler-d1-create`,
+keeping the quotes. **Don't skip this**: otherwise the next command fails with
+`Invalid property: databaseId => Invalid uuid`. If wrangler offered to add the
+database to the config for you, make sure only one `[[d1_databases]]` block with
+`binding = "DB"` remains. Then:
 
 ```powershell
 npx wrangler d1 execute agentcost --remote --file=schema.sql
@@ -102,37 +131,83 @@ It should answer `0 new cloud turns`. The settings are saved in
 
 ## 4. Configure your cloud environment
 
-In the Claude app, open a cloud session, then the **environment menu in the
-session's title bar → Edit**. Do this for every environment you use.
+A cloud **environment** is a saved set of settings that every new cloud
+session starts with. You change **the environment your sessions already use**.
+Don't create a new one, unless you then also start your sessions in it.
 
-1. **Network access:** add your collector's host
-   (`agentcost.<your-subdomain>.workers.dev`) under *Allowed domains*. Leave
-   *Allow package managers* ticked. Without this, cloud sessions can't reach the
-   collector. Steps: https://code.claude.com/docs/en/cloud-environments#network-access
-2. **Environment variables:**
-   ```
-   AGENTCOST_URL=https://agentcost.<your-subdomain>.workers.dev
-   AGENTCOST_INGEST_TOKEN=<ingest token>
-   ```
-3. **Setup script:** copy the script to the clipboard and paste it into
-   *Setup script* (add it below anything that is already there):
-   ```powershell
-   python -m agentcost cloud-setup | Set-Clipboard
-   ```
-   It installs the hook into `~/.claude/settings.json` of each new cloud
-   session. It contains no tokens.
+### 4.1 Open the environment's settings
+
+Edit the environment your sessions run in. Most accounts use the one created
+during onboarding, **"Default Cloud Environment"**. Two ways to open it:
+
+- **From a running cloud session:** click the small arrow (⌄) next to the
+  session title at the top → **Edit cloud environment**.
+- **From the new-session screen:** click the first control under the message
+  box (the environment selector) → find the environment under **Cloud** (or
+  under **More**) → hover over it → click the **settings icon** on its right.
+
+### 4.2 Fill in the fields
+
+The dialog has the rows **Network access**, **Setup script**, **Environment
+variables**, **Network secrets** and **Who can use it**. You need three of them:
+
+**Environment variables** — two lines, `KEY=value`, no quotes:
+
+```
+AGENTCOST_URL=https://agentcost.<your-subdomain>.workers.dev
+AGENTCOST_INGEST_TOKEN=<ingest token>
+```
+
+(Not *Network secrets*: the hook reads normal environment variables.)
+
+**Setup script** — on your PC run the command below, then paste into the field
+(below anything already there). It contains no tokens.
+
+```powershell
+python -m agentcost cloud-setup | Set-Clipboard
+```
+
+**Network access** — only if it is set to a limited level: add
+`agentcost.<your-subdomain>.workers.dev` under *Allowed domains* (host only, no
+`https://`). Leave *Allow package managers* ticked.
+
+Then click **Save changes**.
+
+Don't create a new environment for this, and never put URLs or tokens into an
+environment's name: the name is only a label.
+
+### 4.3 Start a new session
+
+Settings only reach sessions started **after** saving. A session that is
+already open keeps its old settings, even if you continue chatting in it.
+Start a new session (**+ New**) in that environment, with any repository.
 
 ## 5. Check
 
-Start a **new** cloud session (the setup script runs at session start), let
-Claude answer once, then on your PC:
+In the **new** cloud session, send Claude this message:
+
+> Run `python3 ~/.agentcost-hook/agentcost_hook.py check` and show me the output.
+
+| Output | Meaning / fix |
+|---|---|
+| `OK: N new turns sent to https://…` | Works. Continue below. |
+| `AGENTCOST_URL and AGENTCOST_INGEST_TOKEN are not set` | Variables missing: wrong field (Name instead of *Environment variables*), wrong environment, typo in the names, or the session was started before saving. |
+| `No such file or directory` | The setup script didn't run: not saved in this environment, or the session is older than the change. |
+| `Sending to … failed: … 403` / `Tunnel connection failed` | The host is not allowed under *Network access*. |
+| `Sending to … failed: … 401` | Wrong ingest token: the environment variable and `wrangler secret put INGEST_TOKEN` must be the same value. |
+
+Then on your PC:
 
 ```powershell
 python -m agentcost doctor
 ```
 
-Under *Store* the number of **cloud** turns should go up. The web view shows
-"N turns from cloud sessions" in the header.
+Under *Store* the number of **cloud** turns should go up. In the web view
+(`python -m agentcost serve --open`) the header shows "N turns from cloud
+sessions"; click **Refresh data** to fetch new ones.
+
+**Only cloud sessions started after the setup are counted.** Earlier cloud
+sessions ran in containers that no longer exist; their usage can't be recovered.
 
 ## Assigning cloud work to clients
 
@@ -153,6 +228,7 @@ cwd = ["/home/user/bankstm", "/home/user/BankingStatement"]
 |---|---|
 | `sync` says "wrong read token" | `--token` must be the **read** token. Re-run step 3 with the right one. |
 | `sync` says "not reachable" | Collector URL correct? Open it in a browser: it should show `{"service":"agentcost collector"}`. |
+| Variables typed into the environment's **Name** | The name is only a label. Put them into *Environment variables* (step 4.2). If a token ended up in a name, it is visible: create a new ingest token (`python -m agentcost tokens`), set it with `npx wrangler secret put INGEST_TOKEN` and in the environment variable, and archive that environment (its settings → **Archive environment**; environments can't be deleted). |
 | No new cloud turns | Was the session started **after** step 4? Is the host allowed under Network access? Are the variable names exactly `AGENTCOST_URL` and `AGENTCOST_INGEST_TOKEN`? |
 | Still nothing | In a cloud session, ask Claude to run `python3 ~/.agentcost-hook/agentcost_hook.py check`. It sends right away and prints what went wrong (missing variables, blocked host, wrong token). If the file doesn't exist, the setup script didn't run: check step 4.3. |
 
