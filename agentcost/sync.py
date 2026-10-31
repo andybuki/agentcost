@@ -11,6 +11,8 @@ from .store import insert_turns
 
 CLOUD_CONFIG = "~/.agentcost/cloud.json"
 TIMEOUT = 20
+# Cloudflare rejects Python's default "Python-urllib/x.y" agent (error 1010).
+USER_AGENT = "agentcost-sync/1.0"
 
 class SyncError(Exception):
     pass
@@ -32,7 +34,8 @@ def save_cloud_config(url, read_token, path=CLOUD_CONFIG):
         pass
 
 def _get(url, token):
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}",
+                                               "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return json.loads(r.read())

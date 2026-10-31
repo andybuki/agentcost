@@ -25,7 +25,15 @@ class FakeCollector:
                 body = json.dumps(obj).encode()
                 self.send_response(status); self.send_header("Content-Length", str(len(body)))
                 self.end_headers(); self.wfile.write(body)
+            def _python_default_agent(self):
+                # Like Cloudflare's browser check (error 1010).
+                if (self.headers.get("User-Agent") or "").startswith("Python-urllib"):
+                    self._send(403, {"error": "error code: 1010"})
+                    return True
+                return False
             def do_POST(self):
+                if self._python_default_agent():
+                    return
                 if outer.fail:
                     return self._send(500, {"error": "down"})
                 if self.headers.get("Authorization") != "Bearer in":
@@ -38,6 +46,8 @@ class FakeCollector:
                         outer.rows.append({**t, "seq": len(outer.rows) + 1})
                 self._send(200, {"received": len(turns)})
             def do_GET(self):
+                if self._python_default_agent():
+                    return
                 if self.headers.get("Authorization") != "Bearer rd":
                     return self._send(401, {"error": "unauthorized"})
                 after = int(self.path.split("after=")[1])
