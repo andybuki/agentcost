@@ -29,7 +29,7 @@ def test_longest_prefix_price(config_path):
     cfg, _ = load_config(config_path)
     assert price_for(cfg["prices"], "claude-sonnet-4-5-20250929")["input"] == 6.0
     assert price_for(cfg["prices"], "claude-sonnet-3-7")["input"] == 3.0
-    assert price_for(cfg["prices"], "claude-opus-4-1") is None
+    assert price_for(cfg["prices"], "gpt-5") is None
 
 def test_turn_cost():
     price = {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.3}

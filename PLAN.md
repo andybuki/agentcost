@@ -100,31 +100,24 @@ No build step, no framework, no CDN. Layout top → bottom:
 URL holds the state (`?from=…&to=…&cmp=prev&by=client`) so a view can be
 bookmarked.
 
-## Phase 4 — after the web view (existing roadmap, re-ordered)
+## Roadmap after the first real use (2026-10-31)
 
-- Session splitting when one session spans several clients (CLAUDE.md step 3).
-- Human time + fixed-price vs. T&M margin (step 4) — adds a `margin` column
-  that already has a place in the UI.
-- Client-facing monthly report: "Print / PDF" view of one client + one month
-  (step 5), then DATEV / sevDesk export.
-- Budgets/alerts per client ("Acme > 80 % of monthly budget").
-- More agents (Codex CLI, Cursor, Copilot) → `parse.py` gets one adapter per
-  agent writing into the same `turns` table (add an `agent` column).
+The first user works mostly in Claude Code cloud sessions, had no clients set
+up, and got stuck on configuration. Order adjusted accordingly.
 
----
-
-## Suggested order of PRs
-
-| # | PR | size |
+| # | Step | Status |
 |---|---|---|
-| 1 | ✅ Package split + pytest + multi-month sample data | S |
-| 2 | ✅ SQLite store + `ingest` command; CLI reads from DB | M |
-| 3 | ✅ `serve` + JSON API (+ API tests) | M |
-| 4 | ✅ Web view: period bar, KPI tiles, comparison table | M |
-| 5 | ✅ Web view: trend chart, model mix, unassigned panel, CSV | M |
-| 6 | Client monthly report (print view) | S |
+| 1 | Cloud capture: hook → Cloudflare Worker / Python collector → `sync` | ✅ verified end to end |
+| 2 | Onboarding: `agentcost init`, clear config errors, built-in price list, sessions list with project, getting-started guide | ✅ |
+| 3 | **Exact cache-write cost:** Claude Code writes 1-hour cache entries (2× input, not 1.25×). Parse `cache_creation.ephemeral_1h_input_tokens`, store it (new column; Worker + collector + hook accept the field; D1 `ALTER TABLE` + redeploy), price it separately. Cache writes are undercounted until then. | next |
+| 4 | **Monthly client report:** print/PDF view of one client + one month (sessions, projects, models, cost, billable) | |
+| 5 | Manual cost entries: subscriptions and tools without logs (ChatGPT, DeepSeek chat…), split across clients | |
+| 6 | `agent` field in the store; "why assigned" (matched rule) in the UI; manual override per session | |
+| 7 | Budgets / alerts per client; CSV/DATEV export | |
+| 8 | More agents (Codex CLI first, then by demand); Haiku 5.5 long-prompt price tier | |
 
-PRs 2–5 landed together in one change.
+Deliberately not now: content-based session splitting (would need prompt
+text), markup approval history, team mode.
 
 ## Decisions
 

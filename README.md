@@ -1,119 +1,90 @@
 # agentcost
 
-Per-client cost report for AI coding agent sessions (Claude Code first).
+**What did AI agent work cost per client — and what can I bill?**
 
-Reads only metadata from Claude Code session logs (tokens, model, working
-directory, git branch, timestamp), attributes each turn to a client via
-regex rules, prices it, applies a per-client markup, and shows the result in
-a local web view or as a table / CSV. Prompt text and file contents are never
-read. No LLM calls, no network calls.
+agentcost reads the metadata of your Claude Code sessions (time, folder, git
+branch, model, token counts), assigns each session to a client by simple rules,
+prices it, applies your markup, and shows the result in a local web view or as
+a table / CSV.
+
+- **Private:** never reads prompts, answers or code; no AI calls; runs on your PC.
+- **Local and cloud sessions:** Claude Code on your PC, plus cloud sessions
+  (Claude Code on the web) via your own small collector.
+- **History kept:** a local database keeps everything after Claude Code deletes
+  its logs.
+- **No dependencies:** Python 3.11+ only.
 
 ![Web view](docs/screenshot.png)
 
-## How to run commands
+## Start here
 
-All commands are typed in a terminal (PowerShell on Windows, Terminal on
-macOS/Linux), **inside the agentcost folder** — the one that contains
-`clients.toml`:
+**→ [docs/getting-started.md](docs/getting-started.md)** — all steps, from
+installation to your first per-client numbers.
+
+The short version (PowerShell, inside the agentcost folder):
 
 ```powershell
-cd C:\Users\<you>\IdeaProjects\agentcost
-python -m agentcost doctor
+python -m agentcost doctor          # what is found
+python -m agentcost init            # create clients.toml from your folders
+python -m agentcost serve --open    # web view on http://127.0.0.1:8765/
 ```
 
-Every command starts with `python -m agentcost`, followed by the command name
-(`doctor`, `serve`, `report`, `ingest`). Typing only `doctor` does not work.
+Try it with demo data first:
 
-Optional, to type `agentcost doctor` from any folder: install it once with
-`pip install -e .` (inside the agentcost folder). If Windows then says
-"agentcost" is not recognised, the Python `Scripts` folder is not on your
-PATH — keep using `python -m agentcost`. When run outside the agentcost folder,
-add `--config C:\path\to\clients.toml`.
-
-## Quick start
-
-```bash
-# web view with synthetic data (May–Oct 2026) → http://127.0.0.1:8765/
+```powershell
 python gen_sample.py
-python -m agentcost serve --logs sample_logs --db sample.db --open
-
-# real logs (default location ~/.claude/projects)
-python -m agentcost serve --open
-python -m agentcost report --month 2026-10 --csv report.csv
+python -m agentcost serve --config clients.example.toml --logs sample_logs --db sample.db --open
 ```
 
-Requires Python 3.11+ (uses `tomllib`). No runtime dependencies. On Windows,
-`pip install tzdata` for time zone support.
+## Guides
+
+| Guide | For |
+|---|---|
+| [Getting started](docs/getting-started.md) | installation, first run, everyday use, troubleshooting |
+| [Clients and rules](docs/clients.md) | how work is assigned to clients, folder layouts, patterns |
+| [Cloud sessions](docs/cloud.md) | counting Claude Code on the web via Cloudflare or your own server |
 
 ## Commands
 
-| command | what it does |
+All commands start with `python -m agentcost` (or `agentcost` after
+`pip install -e .`). `--config` defaults to `clients.toml` in the current folder.
+
+| Command | What it does |
 |---|---|
-| `ingest` | copy new log lines into the local store (`~/.agentcost/agentcost.db`) |
-| `report` | ingest, then print a per-client table (`--month`, `--csv`); the default when only flags are given |
-| `serve` | ingest, then serve the web view on `127.0.0.1` (`--port`, `--open`) |
-| `sync` | download cloud-session turns from your collector ([docs/cloud.md](docs/cloud.md)); runs automatically once set up |
+| `init` | create `clients.toml` with one client per project folder found (`--print`, `--force`) |
+| `doctor` | show log folders, models (with price source), clients and unassigned folders |
+| `serve` | web view on `127.0.0.1` (`--port`, `--open`) |
+| `report` | per-client table in the terminal (`--month 2026-10`, `--csv file.csv`) |
+| `ingest` | only copy new log entries into the local database |
+| `sync` | download cloud-session data from your collector (automatic once set up) |
 | `cloud-setup` | print the setup script for your cloud environment |
 | `tokens` | create an ingest + read token pair for the collector |
-| `collector` | run a self-hosted collector on your own server (alternative to the Cloudflare Worker) |
-| `doctor` | show which log folders were found, which models were used (and which have no price), and how turns are attributed |
+| `collector` | run a self-hosted collector (alternative to the Cloudflare Worker) |
 
-All take `--logs DIR` (repeatable) and `--db FILE`. Without `--logs`, agentcost
-reads every folder that exists of `$CLAUDE_CONFIG_DIR/projects`,
-`~/.config/claude/projects` and `~/.claude/projects`.
+Every command first reads new log entries (and cloud data, if set up), so the
+numbers are always current. All take `--logs DIR` and `--db FILE`.
 
-**Page empty or numbers missing?** Run
-`python -m agentcost doctor` first. Models without a price
-in `clients.toml` (e.g. DeepSeek or GLM used through Claude Code) still show
-their tokens, but count as 0 cost until you add a `[prices."model"]` section;
-`doctor` prints ready-made ones. Without any client rules the page shows usage
-by model and project.
+## Configuration
 
-**Why a store:** Claude Code deletes session logs after 30 days by default
-(`cleanupPeriodDays`). Run `ingest` (or `serve` / `report`) at least that often
-— e.g. from cron — and history is kept. Only token counts are stored; clients
-and prices are applied when you look, so fixing a rule in `clients.toml`
-re-attributes all history.
+`clients.toml` (created by `init`, ignored by git):
 
-## Web view
+- `[[client]]` rules: `name`, `cwd` / `branch` patterns, `markup` — see
+  [docs/clients.md](docs/clients.md).
+- `currency_symbol`, `currency_rate` (one fixed USD rate), `timezone`.
+- Optional `[subscription]` (`name`, `monthly_fee`, `since`): your flat fee is
+  shown next to the API-equivalent cost.
+- Optional `[prices."model-id"]`: prices for Claude models are built in
+  (`agentcost/prices.toml`, API list prices); add others or override here.
 
-- Period presets (this/last month, last 30 days, quarter, YTD, last 12 months) or a custom range.
-- Compare with the previous period, the same period last year, or a custom range.
-- Totals: API-equivalent cost, billable, margin, sessions — each with the change vs. the comparison.
-- Subscription: fee for the period next to the API-equivalent cost (if `[subscription]` is configured).
-- Cost over time, stacked by client, project or model, with the comparison period as a dashed line.
-- Sortable comparison table; click a client to drill into its projects. CSV export.
-- Model mix, and unassigned work with a ready-to-paste `clients.toml` rule.
-- The URL holds the view, so you can bookmark it. Read-only: rules are edited in
-  `clients.toml` only, and changes show up on the next page load.
+On a subscription plan the amounts are what the same usage would cost on the
+API — a fair basis for billing, not your actual spend.
 
-## Tests
+## Development
 
-```bash
+```powershell
 pip install pytest
 python -m pytest
 ```
 
-## Configuration
-
-**Cloud sessions** (Claude Code on the web / ☁ in the Claude app) don't write
-logs to your PC. To count them, set up your own collector once:
-[docs/cloud.md](docs/cloud.md).
-
-**How to split work by client:** see [docs/clients.md](docs/clients.md) —
-what agentcost can see, how folders and branches map to clients, and
-recommended folder setups.
-
-See `clients.toml`. Prices are USD per million tokens — the shipped values are
-placeholders, verify against the provider's current price list.
-Branch rules take priority over directory rules, so a shared monorepo can be
-split by branch naming (e.g. `acme/*`).
-
-Other settings: `timezone` (days and months are counted in local time),
-`currency_symbol` / `currency_rate` (one fixed rate), and an optional
-`[subscription]` with `name`, `monthly_fee` and `since`.
-
-## Notes
-
-- On a subscription plan the numbers are an API-equivalent cost, not actual spend.
-- `(unassigned)` shows work not yet attributed to any client.
+The Cloudflare Worker has its own tests: `cd cloud/worker; node --test test/worker.test.mjs`.
+Roadmap: [PLAN.md](PLAN.md).

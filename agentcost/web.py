@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import analytics as A
 from .parse import log_files
-from .rules import UNASSIGNED, load_config
+from .rules import UNASSIGNED, ConfigError, load_config
 from .store import connect, ingest, load_turns
 from .sync import CLOUD_CONFIG, load_cloud_config, sync_if_configured
 
@@ -139,6 +139,7 @@ class App:
             "table": A.compare(cur, prev, by),
             "model_mix": A.breakdown(cur, "model"),
             "unassigned": [] if client else A.unassigned(cur),
+            "sessions": A.sessions(cur),
             "unpriced": sorted(unpriced),
         }
 
@@ -208,6 +209,8 @@ def make_handler(app, port):
                     name = f"agentcost_{q.get('from', '')}_{q.get('to', '')}.csv"
                     return self._send(200, app.export_csv(q), "text/csv; charset=utf-8",
                                       {"Content-Disposition": f'attachment; filename="{name}"'})
+            except ConfigError as e:
+                return self._json({"error": f"clients.toml: {e}"}, 400)
             except BadRequest as e:
                 return self._json({"error": str(e)}, 400)
             path = "index.html" if u.path == "/" else u.path.lstrip("/")

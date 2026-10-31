@@ -135,6 +135,8 @@ Work on `main` in that repository falls back to the folder rules.
 ## 6. Workflow
 
 1. Organise folders (section 3) or agree on branch prefixes (section 4).
+   Quick start: `python -m agentcost init` writes a `clients.toml` with one
+   client per folder found in your data; then rename and merge.
 2. Run `python -m agentcost doctor`. The section
    **"Folders without a client"** lists every folder that needs a rule.
 3. Add `[[client]]` rules to `clients.toml`. Delete the example clients

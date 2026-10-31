@@ -9,11 +9,22 @@ from datetime import date, datetime, timedelta
 from pathlib import PurePosixPath
 from zoneinfo import ZoneInfo
 
-from .rules import UNASSIGNED, attribute, normalize_path, price_for, turn_cost
+from .rules import UNASSIGNED, attribute, cwd_pattern, normalize_path, price_for, toml_string, turn_cost
 
 OTHER = "Other"
 DIMENSIONS = ("client", "project", "model")
 TOKEN_KEYS = ("in", "out", "cw", "cr")
+NO_REPO = "(no repository)"
+# Home folders of cloud containers: a session there has no repository checked out.
+HOME_DIRS = {"/home/user", "/root"}
+
+def project_name(cwd):
+    path = normalize_path(cwd).rstrip("/")
+    if not path:
+        return "(none)"
+    if path in HOME_DIRS:
+        return NO_REPO
+    return PurePosixPath(path).name or path
 
 def enrich(turns, cfg, rules):
     """Attach local day, client, project, cost and billable amount to each turn.
@@ -44,13 +55,14 @@ def enrich(turns, cfg, rules):
         client = clients[key]
         cost = turn_cost(t, p) * rate if p else 0.0
         out.append({
-            "day": dt.date(), "client": client, "model": model,
-            "project": PurePosixPath(normalize_path(t["cwd"])).name or "(none)",
+            "day": dt.date(), "dt": dt, "client": client, "model": model,
+            "source": t.get("source") or "local",
+            "project": project_name(t["cwd"]),
             "session": t["session"], "cwd": normalize_path(t["cwd"]), "branch": t["branch"],
             "in": t["in"], "out": t["out"], "cw": t["cw"], "cr": t["cr"],
             "cost": cost, "billable": cost * markups.get(client, 0.0), "priced": p is not None,
         })
-    out.sort(key=lambda r: r["day"])
+    out.sort(key=lambda r: r["dt"])
     return out, unpriced
 
 def select(recs, start, end, client=None):
@@ -203,15 +215,33 @@ def unassigned(recs, limit=10):
     rows = []
     for (cwd, branch), v in groups.items():
         t = _totals(v)
+        # A home-folder rule would match every cloud session, so offer none there.
+        snippet = None if project_name(cwd) in (NO_REPO, "(none)") else rule_snippet(cwd)
         rows.append({"cwd": cwd, "branch": branch, "cost": t["cost"],
-                     "sessions": t["sessions"], "snippet": rule_snippet(cwd)})
+                     "sessions": t["sessions"], "snippet": snippet})
     return sorted(rows, key=lambda r: -r["cost"])[:limit]
 
-def rule_snippet(cwd):
-    special = set(".^$*+?{}[]\\|()")
-    pattern = "".join("\\" + c if c in special else c for c in cwd)
-    if "'" in pattern:  # TOML basic string, backslashes and quotes escaped
-        quoted = '"' + pattern.replace("\\", "\\\\").replace('"', '\\"') + '"'
-    else:  # TOML literal string: no escaping needed
-        quoted = f"'{pattern}'"
-    return f"[[client]]\nname = \"New client\"\ncwd = [{quoted}]\nmarkup = 1.0\n"
+def rule_snippet(cwd, name=None):
+    name = name or (project_name(cwd) if project_name(cwd) not in (NO_REPO, "(none)") else "New client")
+    return (f"[[client]]\nname = {toml_string(name)}\n"
+            f"cwd = [{toml_string(cwd_pattern(cwd))}]\nmarkup = 1.0\n")
+
+def sessions(recs, limit=100):
+    """One row per agent session, most recent first."""
+    groups = defaultdict(list)
+    for r in recs:
+        groups[r["session"]].append(r)
+    rows = []
+    for sid, v in groups.items():
+        t = _totals(v)
+        first, last = v[0], v[-1]  # recs are sorted by time
+        rows.append({
+            "session": sid, "start": first["dt"].isoformat(timespec="minutes"),
+            "end": last["dt"].isoformat(timespec="minutes"),
+            "project": last["project"], "branch": last["branch"], "client": last["client"],
+            "source": last["source"], "models": sorted({r["model"] for r in v}),
+            "turns": t["turns"], "tokens": t["tokens"], "cost": t["cost"],
+            "billable": t["billable"],
+        })
+    rows.sort(key=lambda r: r["end"], reverse=True)
+    return rows[:limit]

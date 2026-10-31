@@ -138,6 +138,10 @@ th[aria-sort] { color: var(--text); }
 tbody tr.drill { cursor: pointer; }
 tbody tr.drill:hover { background: var(--surface-2); }
 tfoot td { font-weight: 600; border-bottom: none; }
+th.static { cursor: default; }
+th.l, td.l { text-align: left; }
+.tag { font-size: 12px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-2); }
+.tag.cloud { color: var(--accent); }
 td .name { display: inline-flex; align-items: center; gap: 8px; }
 .share { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
 .share i { display: inline-block; height: 6px; border-radius: 3px; background: var(--text-3); opacity: .5; }
