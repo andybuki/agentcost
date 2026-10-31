@@ -66,11 +66,11 @@ def valid_turn(t):
 
 class Collector:
     def __init__(self, db_path, ingest_token, read_token):
-        if not (ingest_token and read_token):
+        if not (ingest_token and ingest_token.strip() and read_token and read_token.strip()):
             raise ValueError("both an ingest and a read token are required")
         if ingest_token == read_token:
             raise ValueError("ingest and read token must differ")
-        self.ingest_token, self.read_token = ingest_token, read_token
+        self.ingest_token, self.read_token = ingest_token.strip(), read_token.strip()
         Path(db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self.con = sqlite3.connect(Path(db_path).expanduser(), check_same_thread=False)
         self.con.executescript(SCHEMA)
@@ -119,7 +119,7 @@ def make_handler(collector):
             self.wfile.write(body)
 
         def _authorized(self, expected):
-            got = (self.headers.get("Authorization") or "").removeprefix("Bearer ")
+            got = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
             # Constant-time comparison, so timing reveals nothing about the token.
             return hmac.compare_digest(got.encode(), expected.encode())
 

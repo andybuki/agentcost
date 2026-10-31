@@ -226,6 +226,7 @@ cwd = ["/home/user/bankstm", "/home/user/BankingStatement"]
 
 | Symptom | Check |
 |---|---|
+| Check says `401` although the environment variable looks right | The secret in Cloudflare is a different value. Run `npx wrangler secret put INGEST_TOKEN` again in `cloud\worker` and paste the value from the environment's `AGENTCOST_INGEST_TOKEN` line. The hidden prompt shows one `*` per character: a token from `agentcost tokens` gives **43**. 32 stars usually means the Cloudflare Account ID was still in the clipboard. |
 | `sync` says "wrong read token" | `--token` must be the **read** token. Re-run step 3 with the right one. |
 | `sync` says "not reachable" | Collector URL correct? Open it in a browser: it should show `{"service":"agentcost collector"}`. |
 | Variables typed into the environment's **Name** | The name is only a label. Put them into *Environment variables* (step 4.2). If a token ended up in a name, it is visible: create a new ingest token (`python -m agentcost tokens`), set it with `npx wrangler secret put INGEST_TOKEN` and in the environment variable, and archive that environment (its settings → **Archive environment**; environments can't be deleted). |

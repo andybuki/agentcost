@@ -164,6 +164,7 @@ function render() {
   renderTrend(r);
   renderTable(r);
   renderModels(r);
+  renderSessions(r);
   renderUnassigned(r);
 }
 
@@ -208,7 +209,7 @@ function emptyState() {
     return `<div class="empty"><p><strong>No Claude Code usage found.</strong> Looked in:</p>
       <ul class="dirs">${dirs}</ul>
       <p>If your logs are somewhere else, start with <code>--logs DIR</code>.
-      <code>python -m agentcost doctor --config clients.toml</code> shows what was found.</p></div>`;
+      <code>python -m agentcost doctor</code> shows what was found.</p></div>`;
   }
   return `<div class="empty"><p>No agent activity between ${fmtRange(report.range)}.</p>
     <p>Your data covers ${fmtDate(meta.first_day)} – ${fmtDate(meta.last_day)}.</p>
@@ -400,6 +401,35 @@ function renderModels(r) {
     ${byTokens ? `<p class="hint">Bars show token share, since not every model has a price.</p>` : ""}`;
 }
 
+function fmtDateTime(isoString) {
+  return new Date(isoString).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function renderSessions(r) {
+  const rows = r.sessions;
+  $("#sessions-hint").textContent = rows.length >= 100 ? "latest 100 in this period" :
+    `${rows.length} in this period`;
+  if (!rows.length) { $("#sessions").innerHTML = `<tbody><tr><td class="muted">No sessions in this period.</td></tr></tbody>`; return; }
+  const showClient = meta.has_clients;
+  const head = ["Last activity", "Project", "Branch", "Source", ...(showClient ? ["Client"] : []),
+                "Models", "Turns", "Tokens", "Cost"];
+  const body = rows.map((s) => {
+    const cells = [
+      `<td title="started ${esc(fmtDateTime(s.start))}">${esc(fmtDateTime(s.end))}</td>`,
+      `<td class="l"><span class="name">${state.by === "project" ? swatch(s.project) : ""}${esc(s.project)}</span></td>`,
+      `<td class="l muted">${esc(s.branch || "—")}</td>`,
+      `<td class="l"><span class="tag ${s.source === "cloud" ? "cloud" : ""}">${s.source === "cloud" ? "☁ cloud" : "local"}</span></td>`,
+      ...(showClient ? [`<td class="l">${esc(s.client)}</td>`] : []),
+      `<td class="l muted">${s.models.map(esc).join(", ")}</td>`,
+      `<td>${int(s.turns)}</td>`, `<td>${compact(s.tokens)}</td>`, `<td>${money(s.cost)}</td>`,
+    ];
+    return `<tr>${cells.join("")}</tr>`;
+  }).join("");
+  const right = new Set(["Turns", "Tokens", "Cost"]);
+  $("#sessions").innerHTML = `<thead><tr>${head.map((h, i) =>
+    `<th class="static${right.has(h) || i === 0 ? "" : " l"}">${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+}
+
 function renderUnassigned(r) {
   const card = $("#unassigned-card");
   card.hidden = !!r.client;
@@ -413,8 +443,9 @@ function renderUnassigned(r) {
     <div class="ua">
       <div class="row"><span class="path">${esc(u.cwd || "(no directory)")}${u.branch ? ` <span class="muted">@ ${esc(u.branch)}</span>` : ""}</span>
         <span>${money(u.cost)}</span></div>
-      <pre id="snip-${i}">${esc(u.snippet)}</pre>
-      <button type="button" data-copy="${i}">Copy snippet</button>
+      ${u.snippet ? `<pre id="snip-${i}">${esc(u.snippet)}</pre>
+      <button type="button" data-copy="${i}">Copy snippet</button>` :
+      `<p class="hint">Session without a repository — usually not client work, so no rule is suggested.</p>`}
     </div>`).join("");
   $("#unassigned").querySelectorAll("[data-copy]").forEach((b) => b.onclick = async () => {
     const text = r.unassigned[Number(b.dataset.copy)].snippet;

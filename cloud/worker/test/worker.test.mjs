@@ -35,6 +35,13 @@ test("tokens are separate", async () => {
   assert.equal((await post({ ...e, INGEST_TOKEN: undefined }, { turns: [] }, "")).status, 401);
 });
 
+test("secrets with stray whitespace still match", async () => {
+  const e = { ...env(), INGEST_TOKEN: "in-tok\r\n", READ_TOKEN: " read-tok " };
+  assert.equal((await post(e, { turns: [turn("a")] })).status, 200);
+  assert.equal((await get(e)).status, 200);
+  assert.equal((await post({ ...e, INGEST_TOKEN: "\r\n" }, { turns: [] }, "")).status, 401);
+});
+
 test("rejects bad input", async () => {
   const e = env();
   assert.equal((await post(e, { turns: [turn("a", { in: -1 })] })).status, 400);

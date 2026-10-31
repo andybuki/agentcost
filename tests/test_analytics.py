@@ -93,8 +93,25 @@ def test_windows_project_name_and_snippet(config_path):
     assert rs[0]["project"] == "agentcost"
     (row,) = A.unassigned(rs)
     assert row["cwd"] == "C:/Users/me/IdeaProjects/agentcost"
-    cfg_text = (config_path.read_text() + "\n" + row["snippet"]).replace('"New client"', '"Mine"')
-    config_path.write_text(cfg_text)
+    config_path.write_text(config_path.read_text() + "\n" + row["snippet"])
     from agentcost.rules import load_config as lc, attribute
     _, rules = lc(config_path)
-    assert attribute(rules, r"C:\Users\me\IdeaProjects\agentcost", "main") == "Mine"
+    assert attribute(rules, r"C:\Users\me\IdeaProjects\agentcost", "main") == "agentcost"
+    assert attribute(rules, r"c:\users\me\ideaprojects\agentcost\sub", "") == "agentcost"
+    assert attribute(rules, r"C:\Users\me\IdeaProjects\agentcost2", "") == "(unassigned)"
+
+def test_no_snippet_for_sessions_without_repository(config_path):
+    rs = recs(config_path, [make_entry(cwd="/home/user")])
+    (row,) = A.unassigned(rs)
+    assert row["snippet"] is None and rs[0]["project"] == "(no repository)"
+
+def test_sessions_list(config_path):
+    rs = recs(config_path, [make_entry(msg_id="a", session="s1", ts="2026-10-01T10:00:00Z"),
+                            make_entry(msg_id="b", session="s1", ts="2026-10-01T12:00:00Z", model="claude-sonnet-4-5"),
+                            make_entry(msg_id="c", session="s2", ts="2026-10-02T09:00:00Z", cwd="/projects/swn-x")])
+    rows = A.sessions(rs)
+    assert [r["session"] for r in rows] == ["s2", "s1"]
+    s1 = rows[1]
+    assert s1["turns"] == 2 and s1["project"] == "acme-x" and s1["source"] == "local"
+    assert s1["models"] == ["claude-sonnet-3", "claude-sonnet-4-5"]
+    assert s1["start"] < s1["end"]

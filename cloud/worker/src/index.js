@@ -21,8 +21,11 @@ function json(obj, status = 200) {
 }
 
 // Constant-time comparison, so response timing reveals nothing about the token.
-function tokenOk(request, expected) {
-  const got = (request.headers.get("authorization") || "").replace(/^Bearer /, "");
+// Both sides are trimmed: pasting a secret into `wrangler secret put` on Windows
+// can add an invisible line break, which would otherwise never match.
+function tokenOk(request, expectedRaw) {
+  const expected = (expectedRaw || "").trim();
+  const got = (request.headers.get("authorization") || "").replace(/^Bearer /, "").trim();
   if (!expected || got.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < got.length; i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);

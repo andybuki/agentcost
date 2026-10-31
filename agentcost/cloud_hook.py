@@ -23,6 +23,8 @@ from pathlib import Path
 STATE = Path(os.environ.get("AGENTCOST_HOOK_STATE", "~/.agentcost-hook/state.json")).expanduser()
 BATCH = 500
 TIMEOUT = 5
+# Cloudflare rejects Python's default "Python-urllib/x.y" agent (error 1010).
+USER_AGENT = "agentcost-hook/1.0"
 
 def metadata(line):
     """Same fields as agentcost.parse.parse_line — keep the two in sync."""
@@ -70,7 +72,8 @@ def new_turns(path, offset):
 def post(url, token, turns):
     req = urllib.request.Request(
         url.rstrip("/") + "/ingest", data=json.dumps({"turns": turns}).encode(), method="POST",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}",
+                 "User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         if r.status != 200:
             raise OSError(f"collector answered {r.status}")
@@ -89,6 +92,7 @@ def save_state(state):
 
 def run(hook_input, url, token):
     path = hook_input.get("transcript_path")
+    token = (token or "").strip()
     if not (url and token and path and os.path.isfile(path)):
         return 0
     state = load_state()

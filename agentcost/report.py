@@ -7,10 +7,13 @@ metadata is read (usage, model, cwd, branch, time) — prompt text and file
 contents are never touched. No LLM calls.
 
 Usage:
-  python -m agentcost [report] --config clients.toml [--month 2026-10] [--csv out.csv]
+  python -m agentcost init                           # create clients.toml from your data
+  python -m agentcost [report] [--month 2026-10] [--csv out.csv]
   python -m agentcost ingest
-  python -m agentcost serve --config clients.toml [--port 8765] [--open]
-  python -m agentcost doctor --config clients.toml   # what was found, what is missing
+  python -m agentcost serve [--port 8765] [--open]
+  python -m agentcost doctor                         # what was found, what is missing
+
+--config defaults to clients.toml in the current folder.
   python -m agentcost sync [--url URL --token READ_TOKEN]   # cloud sessions, see docs/cloud.md
   python -m agentcost cloud-setup                    # setup script for cloud environments
   python -m agentcost tokens                         # new ingest + read token pair
@@ -27,7 +30,7 @@ from pathlib import Path
 
 from . import analytics as A
 from .parse import default_log_dirs, log_files
-from .rules import UNASSIGNED, load_config, price_for
+from .rules import UNASSIGNED, ConfigError, load_config, price_for
 from .store import DEFAULT_DB, connect, ingest, load_turns
 from .sync import CLOUD_CONFIG, SyncError, load_cloud_config, save_cloud_config, sync, sync_if_configured
 
@@ -144,6 +147,26 @@ def setup_script():
 def cmd_cloud_setup(a):
     print(setup_script(), end="")
 
+def cmd_init(a):
+    from .init import build
+    target = Path(a.config)
+    if target.exists() and not (a.force or a.print):
+        sys.exit(f"agentcost: {target.resolve()} already exists. Use --print to see a "
+                 "suggestion, or --force to overwrite it.")
+    con = connect(a.db)
+    local, cloud = collect(con, a)
+    turns = load_turns(con)
+    con.close()
+    text, n_clients = build(turns)
+    if a.print:
+        print(text, end="")
+        return
+    target.write_text(text, encoding="utf-8")
+    load_config(target)  # the generated file must load cleanly
+    print(f"Created {target.resolve()} with {n_clients} client(s) from {len(turns)} stored turns.")
+    print("Next: open it, rename clients, merge folders, set markups. Then:")
+    print("  python -m agentcost serve --open")
+
 def cmd_tokens(a):
     import secrets
     print(f"INGEST token (cloud environment, AGENTCOST_INGEST_TOKEN): {secrets.token_urlsafe(32)}")
@@ -195,7 +218,10 @@ def cmd_doctor(a):
     for model, n in Counter(r["model"] for r in recs).most_common():
         g = by_model[model]
         price = price_for(cfg["prices"], model)
-        note = f"{g['cost']:.2f} {cfg.get('currency_symbol', 'USD')}" if price else "NO PRICE in clients.toml"
+        source = ("clients.toml" if any(model.startswith(k) for k in cfg["user_prices"])
+                  else "built-in")
+        note = (f"{g['cost']:.2f} {cfg.get('currency_symbol', 'USD')} ({source} price)" if price
+                else "NO PRICE — add it to clients.toml")
         print(f"  {model:32} {n:>7} turns  {fmt_tokens(g['tokens']):>8} tokens  {note}")
 
     print("\nClients:")
@@ -257,6 +283,11 @@ def main(argv=None):
     p.set_defaults(fn=cmd_sync)
     p = sub.add_parser("cloud-setup", parents=[common], help="print the setup script for cloud environments")
     p.set_defaults(fn=cmd_cloud_setup)
+    p = sub.add_parser("init", parents=[common], help="create clients.toml from the folders in your data")
+    p.add_argument("--config", default="clients.toml", help="file to write (default: clients.toml)")
+    p.add_argument("--force", action="store_true", help="overwrite an existing file")
+    p.add_argument("--print", action="store_true", help="print the suggestion instead of writing")
+    p.set_defaults(fn=cmd_init)
     p = sub.add_parser("tokens", help="create a new ingest + read token pair")
     p.set_defaults(fn=cmd_tokens)
     p = sub.add_parser("collector", help="run a self-hosted collector (instead of Cloudflare)")
@@ -268,8 +299,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if hasattr(a, "logs"):
         a.logs = a.logs or default_log_dirs()
-    if hasattr(a, "config") and not Path(a.config).is_file():
+    if hasattr(a, "config") and a.cmd != "init" and not Path(a.config).is_file():
         ap.exit(2, f"agentcost: config file not found: {Path(a.config).resolve()}\n"
-                   "Run the command in the folder that contains clients.toml, "
-                   "or pass --config PATH.\n")
-    a.fn(a)
+                   "Run the command in the folder that contains clients.toml, pass "
+                   "--config PATH, or create one with: python -m agentcost init\n")
+    try:
+        a.fn(a)
+    except ConfigError as e:
+        ap.exit(2, f"agentcost: problem in {getattr(a, 'config', 'clients.toml')}: {e}\n")

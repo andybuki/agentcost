@@ -22,7 +22,9 @@ client or billing layer).
     raw tokens only, so history survives Claude Code's 30-day log cleanup.
   - `analytics.py` — local-time enrichment (client, project, cost), period
     comparison, time series, subscription fee, unassigned rule snippets.
-  - `report.py` — CLI (`report` / `ingest` / `serve`), table / CSV output.
+  - `report.py` — CLI (`init` / `doctor` / `report` / `serve` / `ingest` / `sync` / …).
+  - `init.py` — starter clients.toml from the folders in the data.
+  - `prices.toml` — built-in API list prices (checked 2026-10); clients.toml overrides.
   - `web.py` + `static/` — local web view on 127.0.0.1, vanilla JS + SVG,
     no external requests. Read-only.
   - `cloud_hook.py` (standalone Stop hook in cloud sessions) → `cloud/worker`
@@ -32,18 +34,23 @@ client or billing layer).
     same API; `tests/test_collectors.py` runs one contract against both.
     Cloud capture sends metadata to the user's own collector — the only path
     where data leaves the machine.
-- `clients.toml` — prices (placeholders!) and client rules. Single source of
-  truth for rules; the planned web view stays read-only.
+- `clients.toml` — the user's rules (git-ignored, created by `init`); validated
+  with clear `ConfigError` messages. `clients.example.toml` is the demo config.
+  Single source of truth for rules; the web view stays read-only.
 - `gen_sample.py` — synthetic logs, 2026-05..2026-10 with an Acme spike in August.
-- `tests/` — pytest suite. `PLAN.md` — roadmap for the store + web view.
+- `tests/` — pytest suite. `PLAN.md` — roadmap. Docs: `docs/getting-started.md`,
+  `docs/clients.md`, `docs/cloud.md`.
 
 ## Next steps
 1. ✅ Verified against real Claude Code logs on Windows (2026-10): field names
    match; Windows paths are normalized to "/" for rules and project names.
    Finding: the first user works mostly in Claude Code cloud sessions → cloud
-   capture added; still to verify in a real cloud environment (setup script
-   + env vars reaching the Stop hook).
-2. Client-facing monthly report (print view) — see `PLAN.md`.
+   capture added. ✅ Verified end to end in a real cloud environment with a
+   deployed Cloudflare Worker (2026-10-31). Lessons: Cloudflare blocks the
+   default Python-urllib User-Agent (error 1010); users typed variables into
+   the environment *name*; wrong secret pasted (Account ID) → see docs/cloud.md.
+2. ✅ Onboarding (`init`, config validation, built-in prices, sessions list).
+   Next: exact 1-hour cache-write pricing, then the monthly client report — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
 5. Client-facing monthly report (HTML/PDF), export for DATEV / sevDesk.
