@@ -34,6 +34,8 @@ def parse_line(line):
         "out": usage.get("output_tokens", 0) or 0,
         "cw": usage.get("cache_creation_input_tokens", 0) or 0,
         "cr": usage.get("cache_read_input_tokens", 0) or 0,
+        # Part of "cw" written with the 1-hour TTL (priced 2x input instead of 1.25x).
+        "cw1h": (usage.get("cache_creation") or {}).get("ephemeral_1h_input_tokens", 0) or 0,
     }
 
 def read_file(path, offset=0):

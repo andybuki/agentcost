@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS turns (
     tok_out     INTEGER NOT NULL DEFAULT 0,
     cache_write INTEGER NOT NULL DEFAULT 0,
     cache_read  INTEGER NOT NULL DEFAULT 0,
+    cache_write_1h INTEGER NOT NULL DEFAULT 0,  -- share of cache_write with 1-hour TTL
     source_file TEXT,
     ingested_at TEXT,
     source      TEXT NOT NULL DEFAULT 'local',  -- 'local' log file or 'cloud' collector
@@ -41,19 +42,30 @@ CREATE TABLE IF NOT EXISTS sync_state (
 );
 """
 
-INSERT_TURN = """INSERT OR IGNORE INTO turns
+# Existing rows only get a missing 1-hour cache share filled in (backfill after
+# the column was added); everything else about a stored turn never changes.
+INSERT_TURN = """INSERT INTO turns
     (msg_id, request_id, ts, session, cwd, branch, model,
-     tok_in, tok_out, cache_write, cache_read, source_file, ingested_at, source)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
+     tok_in, tok_out, cache_write, cache_read, cache_write_1h, source_file, ingested_at, source)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT (msg_id, request_id) DO UPDATE SET cache_write_1h = excluded.cache_write_1h
+    WHERE excluded.cache_write_1h > turns.cache_write_1h"""
 
 def connect(db_path=DEFAULT_DB):
     p = Path(db_path).expanduser()
     p.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(p)
     con.executescript(SCHEMA)
+    columns = {r[1] for r in con.execute("PRAGMA table_info(turns)")}
     # Stores created before cloud sync have no source column.
-    if "source" not in {r[1] for r in con.execute("PRAGMA table_info(turns)")}:
+    if "source" not in columns:
         con.execute("ALTER TABLE turns ADD COLUMN source TEXT NOT NULL DEFAULT 'local'")
+    # Stores created before 1-hour cache pricing: add the column and re-read all
+    # log files once, so the share is filled in for history still on disk.
+    if "cache_write_1h" not in columns:
+        con.execute("ALTER TABLE turns ADD COLUMN cache_write_1h INTEGER NOT NULL DEFAULT 0")
+        con.execute("DELETE FROM files")
+        con.commit()
     return con
 
 def now_utc():
@@ -62,12 +74,13 @@ def now_utc():
 def insert_turns(con, rows):
     """Insert (turn, source_file, source) tuples; returns the number of new rows."""
     now = now_utc()
-    before = con.total_changes
+    before = con.execute("SELECT COUNT(*) FROM turns").fetchone()[0]
     con.executemany(INSERT_TURN, [
         (t["msg_id"], t["request_id"] or "", t["ts"], t["session"], t["cwd"], t["branch"],
-         t["model"], t["in"], t["out"], t["cw"], t["cr"], src_file, now, source)
+         t["model"], t["in"], t["out"], t["cw"], t["cr"], t.get("cw1h", 0) or 0,
+         src_file, now, source)
         for t, src_file, source in rows])
-    return con.total_changes - before
+    return con.execute("SELECT COUNT(*) FROM turns").fetchone()[0] - before
 
 def ingest(con, log_dirs):
     """Read new lines from all log files. Idempotent; returns number of new turns."""
@@ -93,8 +106,8 @@ def ingest(con, log_dirs):
 def load_turns(con):
     """All stored turns as dicts in the same shape parse.iter_turns yields."""
     cur = con.execute("""SELECT msg_id, request_id, ts, session, cwd, branch, model,
-                                tok_in, tok_out, cache_write, cache_read, source
+                                tok_in, tok_out, cache_write, cache_read, cache_write_1h, source
                          FROM turns ORDER BY ts""")
     keys = ("msg_id", "request_id", "ts", "session", "cwd", "branch", "model",
-            "in", "out", "cw", "cr", "source")
+            "in", "out", "cw", "cr", "cw1h", "source")
     return [dict(zip(keys, r)) for r in cur]

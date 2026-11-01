@@ -110,6 +110,8 @@ def cmd_sync(a):
         sys.exit("agentcost: no collector configured. Run once with --url URL --token READ_TOKEN "
                  "(see docs/cloud.md).")
     con = connect(a.db)
+    if a.full:  # download everything again; stored turns get missing fields filled in
+        con.execute("DELETE FROM sync_state WHERE url = ?", (cfg["url"],))
     try:
         added = sync(con, cfg["url"], cfg["read_token"])
     except SyncError as e:
@@ -213,6 +215,17 @@ def cmd_doctor(a):
     recs, unpriced = A.enrich(turns, cfg, rules)
     print(f"Data from {recs[0]['day']} to {recs[-1]['day']} ({cfg.get('timezone', 'UTC')})")
 
+    sym = cfg.get("currency_symbol", "USD")
+    print(f"\nStored per month:          local turns  cloud turns    cost {sym}")
+    months = {}
+    for r in recs:
+        m = months.setdefault(A.bucket_key(r["day"], "month"), {"local": 0, "cloud": 0, "cost": 0.0})
+        m[r["source"]] += 1
+        m["cost"] += r["cost"]
+    for key in sorted(months):
+        m = months[key]
+        print(f"  {key}                 {m['local']:>11}  {m['cloud']:>11}  {m['cost']:>9.2f}")
+
     print("\nModels:")
     by_model = {r["name"]: r for r in A.breakdown(recs, "model")}
     for model, n in Counter(r["model"] for r in recs).most_common():
@@ -280,6 +293,7 @@ def main(argv=None):
     p = sub.add_parser("sync", parents=[common], help="download cloud-session turns from your collector")
     p.add_argument("--url", help="collector URL (saved for next time)")
     p.add_argument("--token", help="READ token (saved for next time)")
+    p.add_argument("--full", action="store_true", help="download everything again (after updates)")
     p.set_defaults(fn=cmd_sync)
     p = sub.add_parser("cloud-setup", parents=[common], help="print the setup script for cloud environments")
     p.set_defaults(fn=cmd_cloud_setup)

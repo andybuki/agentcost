@@ -21,7 +21,7 @@ MAX_BODY = 2_000_000
 PAGE = 1000
 STR_FIELDS = {"msg_id": 300, "request_id": 200, "ts": 40, "session": 100,
               "cwd": 1000, "branch": 300, "model": 100}
-INT_FIELDS = ("in", "out", "cw", "cr")
+INT_FIELDS = ("in", "out", "cw", "cr", "cw1h")
 
 # Same table as cloud/worker/schema.sql, so both collectors behave alike.
 SCHEMA = """
@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS turns (
   tok_out     INTEGER NOT NULL DEFAULT 0,
   cache_write INTEGER NOT NULL DEFAULT 0,
   cache_read  INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h INTEGER NOT NULL DEFAULT 0,
   received_at TEXT NOT NULL,
   UNIQUE (msg_id, request_id)
 );
@@ -74,6 +75,8 @@ class Collector:
         Path(db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         self.con = sqlite3.connect(Path(db_path).expanduser(), check_same_thread=False)
         self.con.executescript(SCHEMA)
+        if "cache_write_1h" not in {r[1] for r in self.con.execute("PRAGMA table_info(turns)")}:
+            self.con.execute("ALTER TABLE turns ADD COLUMN cache_write_1h INTEGER NOT NULL DEFAULT 0")
         self.lock = threading.Lock()
 
     def ingest(self, turns):
@@ -82,23 +85,26 @@ class Collector:
             return None
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         with self.lock:
-            before = self.con.total_changes
+            before = self.con.execute("SELECT COUNT(*) FROM turns").fetchone()[0]
+            # A resent turn only fills in a missing 1-hour cache share.
             self.con.executemany(
-                """INSERT OR IGNORE INTO turns (msg_id, request_id, ts, session, cwd, branch, model,
-                     tok_in, tok_out, cache_write, cache_read, received_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO turns (msg_id, request_id, ts, session, cwd, branch, model,
+                     tok_in, tok_out, cache_write, cache_read, cache_write_1h, received_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT (msg_id, request_id) DO UPDATE SET cache_write_1h = excluded.cache_write_1h
+                   WHERE excluded.cache_write_1h > turns.cache_write_1h""",
                 [(r["msg_id"], r["request_id"], r["ts"], r["session"], r["cwd"], r["branch"],
-                  r["model"], r["in"], r["out"], r["cw"], r["cr"], now) for r in rows])
+                  r["model"], r["in"], r["out"], r["cw"], r["cr"], r["cw1h"], now) for r in rows])
             self.con.commit()
-            return self.con.total_changes - before
+            return self.con.execute("SELECT COUNT(*) FROM turns").fetchone()[0] - before
 
     def turns_after(self, after):
         keys = ("seq", "msg_id", "request_id", "ts", "session", "cwd", "branch", "model",
-                "in", "out", "cw", "cr")
+                "in", "out", "cw", "cr", "cw1h")
         with self.lock:
             rows = self.con.execute(
                 """SELECT seq, msg_id, request_id, ts, session, cwd, branch, model,
-                          tok_in, tok_out, cache_write, cache_read
+                          tok_in, tok_out, cache_write, cache_read, cache_write_1h
                    FROM turns WHERE seq > ? ORDER BY seq LIMIT ?""", (after, PAGE)).fetchall()
         turns = [dict(zip(keys, r)) for r in rows]
         return {"turns": turns, "last": turns[-1]["seq"] if turns else after,

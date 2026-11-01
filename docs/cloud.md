@@ -209,6 +209,20 @@ sessions"; click **Refresh data** to fetch new ones.
 **Only cloud sessions started after the setup are counted.** Earlier cloud
 sessions ran in containers that no longer exist; their usage can't be recovered.
 
+## Updating
+
+When a new agentcost version changes the cloud part (the release notes or
+PLAN.md say so), three steps:
+
+1. On your PC: `git pull`, then in `cloud\worker`: `npx wrangler deploy`.
+   The Worker updates its own database; no SQL needed.
+2. Replace the **Setup script** of your environment with the new output of
+   `python -m agentcost cloud-setup | Set-Clipboard` (the hook is part of it).
+3. `python -m agentcost sync --full` — downloads everything again so stored
+   turns get new fields filled in.
+
+New cloud sessions use the new hook; running sessions keep the old one.
+
 ## Assigning cloud work to clients
 
 Cloud sessions run in `/home/user/<repository name>`, so client rules match

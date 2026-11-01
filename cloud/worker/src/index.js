@@ -12,7 +12,7 @@ const MAX_BODY = 2_000_000;   // bytes
 const PAGE = 1000;
 
 const STR_FIELDS = { msg_id: 300, request_id: 200, ts: 40, session: 100, cwd: 1000, branch: 300, model: 100 };
-const INT_FIELDS = ["in", "out", "cw", "cr"];
+const INT_FIELDS = ["in", "out", "cw", "cr", "cw1h"];
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -49,6 +49,22 @@ export function validTurn(t) {
   return row;
 }
 
+// Databases created before 1-hour cache pricing lack a column; add it on first use,
+// so updating needs only `wrangler deploy`, no manual SQL.
+const checkedDatabases = new WeakSet();
+async function ensureSchema(env) {
+  if (checkedDatabases.has(env.DB)) return;
+  const { results } = await env.DB.prepare("PRAGMA table_info(turns)").all();
+  if (!results.some((c) => c.name === "cache_write_1h")) {
+    try {
+      await env.DB.prepare("ALTER TABLE turns ADD COLUMN cache_write_1h INTEGER NOT NULL DEFAULT 0").run();
+    } catch (e) {
+      if (!String(e).includes("duplicate column")) throw e;  // a parallel request added it
+    }
+  }
+  checkedDatabases.add(env.DB);
+}
+
 async function ingest(request, env) {
   if (!tokenOk(request, env.INGEST_TOKEN)) return json({ error: "unauthorized" }, 401);
   const text = await request.text();
@@ -61,25 +77,31 @@ async function ingest(request, env) {
   if (rows.some((r) => !r)) return json({ error: "invalid turn" }, 400);
   if (!rows.length) return json({ received: 0, added: 0 });
 
+  await ensureSchema(env);
   const now = new Date().toISOString();
+  // A resent turn only fills in a missing 1-hour cache share; nothing else changes.
   const stmt = env.DB.prepare(
-    `INSERT OR IGNORE INTO turns (msg_id, request_id, ts, session, cwd, branch, model,
-       tok_in, tok_out, cache_write, cache_read, received_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`);
+    `INSERT INTO turns (msg_id, request_id, ts, session, cwd, branch, model,
+       tok_in, tok_out, cache_write, cache_read, cache_write_1h, received_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+     ON CONFLICT (msg_id, request_id) DO UPDATE SET cache_write_1h = excluded.cache_write_1h
+     WHERE excluded.cache_write_1h > turns.cache_write_1h`);
   const results = await env.DB.batch(rows.map((r) => stmt.bind(
     r.msg_id, r.request_id, r.ts, r.session, r.cwd, r.branch, r.model,
-    r.in, r.out, r.cw, r.cr, now)));
+    r.in, r.out, r.cw, r.cr, r.cw1h, now)));
   const added = results.reduce((a, res) => a + (res.meta?.changes || 0), 0);
   return json({ received: rows.length, added });
 }
 
 async function list(request, env, url) {
   if (!tokenOk(request, env.READ_TOKEN)) return json({ error: "unauthorized" }, 401);
+  await ensureSchema(env);
   const after = Number.parseInt(url.searchParams.get("after") || "0", 10);
   if (!Number.isSafeInteger(after) || after < 0) return json({ error: "'after' must be a number" }, 400);
   const { results } = await env.DB.prepare(
     `SELECT seq, msg_id, request_id, ts, session, cwd, branch, model,
-            tok_in AS "in", tok_out AS out, cache_write AS cw, cache_read AS cr
+            tok_in AS "in", tok_out AS out, cache_write AS cw, cache_read AS cr,
+            cache_write_1h AS cw1h
      FROM turns WHERE seq > ?1 ORDER BY seq LIMIT ?2`).bind(after, PAGE).all();
   return json({ turns: results, last: results.length ? results[results.length - 1].seq : after,
                 more: results.length === PAGE });

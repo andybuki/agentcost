@@ -460,14 +460,15 @@ async function init() {
   meta = await (await fetch("/api/meta")).json();
   setupFormats(meta.currency);
   $("#data-range").textContent = meta.first_day
-    ? `data ${fmtDate(meta.first_day)} – ${fmtDate(meta.last_day)} · ${meta.timezone}`
-      + (meta.cloud.configured ? ` · ${int(meta.cloud.turns)} turns from cloud sessions` : "")
+    ? `data ${fmtDate(meta.first_day)} – ${fmtDate(meta.last_day)} · ${int(meta.turns_stored)} turns stored`
+      + (meta.cloud.configured ? ` (${int(meta.cloud.turns)} from cloud sessions)` : "") + ` · ${meta.timezone}`
     : "no data yet — run Claude Code, then Refresh";
   const fromUrl = new URLSearchParams(location.search);
   readUrl();
   if (!state.from || !state.to) {
-    applyPreset(state.preset || "this-month");
-    // Don't open on an empty month: fall back to the latest month with data.
+    // Last 30 days rather than the calendar month: on the 1st, "this month" is nearly empty.
+    applyPreset(state.preset || "last-30");
+    // Don't open on an empty period: fall back to the latest month with data.
     if (!fromUrl.has("preset") && meta.last_day && meta.last_day < state.from) {
       const last = parse(meta.last_day);
       state.from = iso(new Date(last.getFullYear(), last.getMonth(), 1));

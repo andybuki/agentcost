@@ -204,3 +204,17 @@ def test_hook_check_mode(tmp_path, collector, monkeypatch, capsys):
     monkeypatch.setenv("AGENTCOST_INGEST_TOKEN", "in")
     assert cloud_hook.main() == 0
     assert "OK: 1 new turns" in capsys.readouterr().out
+
+def test_sync_full_refills_fields(tmp_path, collector):
+    t = tmp_path / "t.jsonl"
+    t.write_text(json.dumps(make_entry(msg_id="a")) + "\n")
+    cloud_hook.run({"transcript_path": str(t)}, collector.url, "in")
+    cfg = tmp_path / "cloud.json"
+    save_cloud_config(collector.url, "rd", cfg)
+    common = ["--db", str(tmp_path / "s.db"), "--cloud-config", str(cfg), "--logs", str(tmp_path / "none")]
+    main(["sync", *common])
+    collector.rows[0]["cw1h"] = 5  # collector learned the 1-hour share later
+    main(["sync", *common])
+    assert load_turns(connect(tmp_path / "s.db"))[0]["cw1h"] == 0   # incremental: not refetched
+    main(["sync", "--full", *common])
+    assert load_turns(connect(tmp_path / "s.db"))[0]["cw1h"] == 5
