@@ -36,6 +36,7 @@ markup = 1.3
 name = "Stadtwerke Nord"
 cwd = ["/projects/swn-"]
 markup = 1.2
+min_fee = 25     # monthly report bills at least this much
 
 [[client]]
 name = "Internal"

@@ -29,6 +29,7 @@ from datetime import date
 from pathlib import Path
 
 from . import analytics as A
+from .billing import has_retainer
 from .parse import default_log_dirs, log_files
 from .rules import UNASSIGNED, ConfigError, load_config, price_for
 from .store import DEFAULT_DB, connect, ingest, load_turns
@@ -188,6 +189,8 @@ def cmd_monthly(a):
         # Internal work (markup 0) has nothing to bill; it shows up with --internal.
         clients = [r["name"] for r in A.breakdown(A.select(recs, start, end), "client")
                    if r["name"] != UNASSIGNED and (a.internal or r["billable"] > 0)]
+        # Retainer clients (fixed or minimum fee) are invoiced even without usage.
+        clients += [r["name"] for r in rules if has_retainer(r["terms"]) and r["name"] not in clients]
         if not clients:
             sys.exit(f"agentcost: no client activity in {a.month}")
     out_dir = Path(a.out_dir)

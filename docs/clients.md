@@ -56,6 +56,31 @@ The order of checks:
 Rules apply to **all history**, not just new work. Fix a rule, reload the page,
 and past months are re-attributed.
 
+### Monthly billing terms (optional)
+
+`markup` bills usage: cost × markup. For retainers, minimums or budgets add
+terms per client. They apply to a whole calendar month and are settled in the
+**monthly report** (`monthly` command, `/report`), amounts in your currency:
+
+```toml
+[[client]]
+name = "Acme GmbH"
+markup = 1.3
+min_fee = 50      # invoice at least 50 per month
+cap = 400         # never more than 400 per month
+
+[[client]]
+name = "Stadtwerke Nord"
+fixed_fee = 250   # flat fee; usage is shown but not billed on top
+```
+
+- `min_fee` / `cap` can be combined (`min_fee` ≤ `cap`); `fixed_fee` stands alone.
+- The report shows *usage value*, the adjustment (with its reason) and the
+  total. The client version never shows your cost.
+- Clients with `fixed_fee` or `min_fee` get a report even in months without usage.
+- The web dashboard keeps showing usage-based billable (cost × markup), since
+  terms only make sense per month.
+
 ## 3. Recommended setup: one folder per client
 
 You don't need to create anything inside Claude Code: no "projects" to set
