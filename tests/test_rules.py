@@ -39,3 +39,12 @@ def test_turn_cost():
 def test_windows_paths_match_slash_rules(config_path):
     _, rules = load_config(config_path)
     assert attribute(rules, r"C:\Users\me\projects\swn-dash", "main") == "SWN"
+
+def test_one_hour_cache_writes_cost_double_input():
+    price = {"input": 4.0, "output": 20.0, "cache_write": 5.0, "cache_read": 0.2}
+    t = {"in": 0, "out": 0, "cw": 1_000_000, "cr": 0}
+    assert turn_cost({**t, "cw1h": 0}, price) == 5.0
+    assert turn_cost({**t, "cw1h": 1_000_000}, price) == 8.0      # 2x input
+    assert turn_cost({**t, "cw1h": 250_000}, price) == 5.75       # mixed
+    assert turn_cost({**t, "cw1h": 9_000_000}, price) == 8.0      # never more than cw
+    assert turn_cost({**t, "cw1h": 1_000_000}, {**price, "cache_write_1h": 6.0}) == 6.0

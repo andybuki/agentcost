@@ -105,3 +105,14 @@ def test_collector_refuses_weak_token_setup(tmp_path):
         Collector(tmp_path / "c.db", "same", "same")
     with pytest.raises(ValueError):
         Collector(tmp_path / "c.db", "", "x")
+
+def test_resend_fills_one_hour_share(collector_url):
+    call(collector_url, "/ingest", {"turns": [turn("a")]})
+    call(collector_url, "/ingest", {"turns": [turn("a", cw1h=3), turn("b", cw1h=2)]})
+    rows = {t["msg_id"]: t for t in call(collector_url, "/turns?after=0", token=RD)[1]["turns"]}
+    assert (rows["a"]["cw1h"], rows["b"]["cw1h"]) == (3, 2)
+    assert rows["a"]["in"] == 1 and len(rows) == 2
+
+def test_turn_without_one_hour_field_still_accepted(collector_url):
+    t = turn("old"); t.pop("cw1h", None)
+    assert call(collector_url, "/ingest", {"turns": [t]})[0] == 200

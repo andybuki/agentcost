@@ -50,7 +50,8 @@ client or billing layer).
    default Python-urllib User-Agent (error 1010); users typed variables into
    the environment *name*; wrong secret pasted (Account ID) → see docs/cloud.md.
 2. ✅ Onboarding (`init`, config validation, built-in prices, sessions list).
-   Next: exact 1-hour cache-write pricing, then the monthly client report — see `PLAN.md`.
+   ✅ Exact 1-hour cache-write pricing (`cw1h`, 2× input; Claude Code writes
+   only 1-hour entries). Next: the monthly client report — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
 5. Client-facing monthly report (HTML/PDF), export for DATEV / sevDesk.

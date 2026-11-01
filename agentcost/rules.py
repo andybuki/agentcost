@@ -62,6 +62,8 @@ def load_config(path):
             if field not in p:
                 raise ConfigError(f'[prices."{model}"] is missing {field}')
             _number(p[field], f'[prices."{model}"] {field}')
+        if "cache_write_1h" in p:
+            _number(p["cache_write_1h"], f'[prices."{model}"] cache_write_1h')
     cfg["prices"] = {**builtin_prices(), **user_prices}
     cfg["user_prices"] = set(user_prices)
 
@@ -133,6 +135,13 @@ def price_for(prices, model):
     return prices.get(best) if best else None
 
 def turn_cost(turn, price):
-    """Cost of one turn in the price list's currency (prices are per million tokens)."""
+    """Cost of one turn in the price list's currency (prices are per million tokens).
+
+    "cw" is all cache writes; the 1-hour share "cw1h" costs cache_write_1h
+    (default 2x input), the rest the 5-minute cache_write price.
+    """
+    cw1h = min(turn.get("cw1h", 0) or 0, turn["cw"])
+    write_1h = price.get("cache_write_1h", 2 * price["input"])
     return (turn["in"] * price["input"] + turn["out"] * price["output"]
-            + turn["cw"] * price["cache_write"] + turn["cr"] * price["cache_read"]) / 1e6
+            + (turn["cw"] - cw1h) * price["cache_write"] + cw1h * write_1h
+            + turn["cr"] * price["cache_read"]) / 1e6

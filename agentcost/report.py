@@ -110,6 +110,8 @@ def cmd_sync(a):
         sys.exit("agentcost: no collector configured. Run once with --url URL --token READ_TOKEN "
                  "(see docs/cloud.md).")
     con = connect(a.db)
+    if a.full:  # download everything again; stored turns get missing fields filled in
+        con.execute("DELETE FROM sync_state WHERE url = ?", (cfg["url"],))
     try:
         added = sync(con, cfg["url"], cfg["read_token"])
     except SyncError as e:
@@ -291,6 +293,7 @@ def main(argv=None):
     p = sub.add_parser("sync", parents=[common], help="download cloud-session turns from your collector")
     p.add_argument("--url", help="collector URL (saved for next time)")
     p.add_argument("--token", help="READ token (saved for next time)")
+    p.add_argument("--full", action="store_true", help="download everything again (after updates)")
     p.set_defaults(fn=cmd_sync)
     p = sub.add_parser("cloud-setup", parents=[common], help="print the setup script for cloud environments")
     p.set_defaults(fn=cmd_cloud_setup)

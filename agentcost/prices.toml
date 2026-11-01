@@ -5,8 +5,9 @@
 # "claude-opus-4-1-20250805". Unknown models stay unpriced (shown with a warning)
 # rather than guessed.
 #
-# cache_write is the 5-minute cache write (1.25x input). Claude Code mostly writes
-# 1-hour cache entries (2x input); agentcost does not split those yet (see PLAN.md).
+# cache_write is the 5-minute cache write (1.25x input). Cache writes with the
+# 1-hour TTL — what Claude Code mostly uses — cost 2x input; that price is derived
+# automatically, or set cache_write_1h explicitly to override it.
 # cache_read is 0.1x input, except where the provider prices it differently.
 
 # --- current models ---------------------------------------------------------
