@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 description = "Per-client cost of AI coding agent work, local-first, metadata only"
 readme = "README.md"
 license = { text = "PolyForm-Noncommercial-1.0.0" }
-authors = [{ name = "Andrey Bukhman" }]
+authors = [{ name = "Andrey Buchmann" }]
 
 [project.scripts]
 agentcost = "agentcost.report:main"
