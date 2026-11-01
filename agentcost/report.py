@@ -213,6 +213,17 @@ def cmd_doctor(a):
     recs, unpriced = A.enrich(turns, cfg, rules)
     print(f"Data from {recs[0]['day']} to {recs[-1]['day']} ({cfg.get('timezone', 'UTC')})")
 
+    sym = cfg.get("currency_symbol", "USD")
+    print(f"\nStored per month:          local turns  cloud turns    cost {sym}")
+    months = {}
+    for r in recs:
+        m = months.setdefault(A.bucket_key(r["day"], "month"), {"local": 0, "cloud": 0, "cost": 0.0})
+        m[r["source"]] += 1
+        m["cost"] += r["cost"]
+    for key in sorted(months):
+        m = months[key]
+        print(f"  {key}                 {m['local']:>11}  {m['cloud']:>11}  {m['cost']:>9.2f}")
+
     print("\nModels:")
     by_model = {r["name"]: r for r in A.breakdown(recs, "model")}
     for model, n in Counter(r["model"] for r in recs).most_common():
