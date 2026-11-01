@@ -24,6 +24,8 @@ client or billing layer).
     comparison, time series, subscription fee, unassigned rule snippets.
   - `report.py` — CLI (`init` / `doctor` / `report` / `serve` / `ingest` / `sync` / …).
   - `init.py` — starter clients.toml from the folders in the data.
+  - `monthly.py` — printable monthly report per client (client / internal
+    version), served at `/report` and written by the `monthly` command.
   - `prices.toml` — built-in API list prices (checked 2026-10); clients.toml overrides.
   - `web.py` + `static/` — local web view on 127.0.0.1, vanilla JS + SVG,
     no external requests. Read-only.
@@ -51,7 +53,7 @@ client or billing layer).
    the environment *name*; wrong secret pasted (Account ID) → see docs/cloud.md.
 2. ✅ Onboarding (`init`, config validation, built-in prices, sessions list).
    ✅ Exact 1-hour cache-write pricing (`cw1h`, 2× input; Claude Code writes
-   only 1-hour entries). Next: the monthly client report — see `PLAN.md`.
+   only 1-hour entries). ✅ Monthly client report. Next: manual cost entries — see `PLAN.md`.
 3. Session splitting when one session touches several clients.
 4. Human time + token cost → margin per client (fixed price vs T&M).
 5. Client-facing monthly report (HTML/PDF), export for DATEV / sevDesk.

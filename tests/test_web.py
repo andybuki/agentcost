@@ -79,3 +79,15 @@ def test_meta_reports_clients_and_log_dirs(server):
     assert meta["has_clients"] is True
     assert meta["turns_stored"] == 3
     assert meta["log_dirs"] == [{"path": str(logs), "found": True, "files": 1}]
+
+def test_monthly_report_page(server):
+    base, _, _ = server
+    status, headers, body = get(f"{base}/report?client=Acme&month=2026-10")
+    assert status == 200 and headers["Content-Type"].startswith("text/html")
+    assert "<h1>Acme</h1>" in body and 'src="print.js"' in body and "<script>" not in body
+    assert "month=2026-09" in body and "view=internal" in body
+    assert "Markup" in get(f"{base}/report?client=Acme&month=2026-10&view=internal")[2]
+    assert get(f"{base}/print.js")[0] == 200
+    with pytest.raises(urllib.error.HTTPError) as e:
+        get(f"{base}/report?client=Acme&month=oct")
+    assert e.value.code == 400

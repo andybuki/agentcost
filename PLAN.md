@@ -110,8 +110,8 @@ up, and got stuck on configuration. Order adjusted accordingly.
 | 1 | Cloud capture: hook → Cloudflare Worker / Python collector → `sync` | ✅ verified end to end |
 | 2 | Onboarding: `agentcost init`, clear config errors, built-in price list, sessions list with project, getting-started guide | ✅ |
 | 3 | **Exact cache-write cost:** Claude Code writes 1-hour cache entries (2× input, not 1.25×). Parse `cache_creation.ephemeral_1h_input_tokens`, store it (new column; Worker + collector + hook accept the field; D1 `ALTER TABLE` + redeploy), price it separately. | ✅ Worker migrates itself; `sync --full` refills |
-| 4 | **Monthly client report:** print/PDF view of one client + one month (sessions, projects, models, cost, billable) | next |
-| 5 | Manual cost entries: subscriptions and tools without logs (ChatGPT, DeepSeek chat…), split across clients | |
+| 4 | **Monthly client report:** print/PDF view of one client + one month (sessions, projects, models, cost, billable) | ✅ web (Report ↗) + `monthly` CLI; client and internal versions |
+| 5 | Manual cost entries: subscriptions and tools without logs (ChatGPT, DeepSeek chat…), split across clients | next |
 | 6 | `agent` field in the store; "why assigned" (matched rule) in the UI; manual override per session | |
 | 7 | Budgets / alerts per client; CSV/DATEV export | |
 | 8 | More agents (Codex CLI first, then by demand); Haiku 5.5 long-prompt price tier | |
