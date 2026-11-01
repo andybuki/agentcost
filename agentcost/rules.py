@@ -3,6 +3,8 @@ import datetime, re, tomllib
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .billing import TERM_KEYS
+
 UNASSIGNED = "(unassigned)"
 PRICE_FIELDS = ("input", "output", "cache_write", "cache_read")
 DEFAULT_PRICES = Path(__file__).parent / "prices.toml"
@@ -87,8 +89,14 @@ def load_config(path):
             raise ConfigError(f"client name '{name}' is used twice; merge the rules into one "
                               "[[client]] (several cwd patterns are allowed)")
         names.add(name)
+        terms = {k: _number(c[k], f"client '{name}' {k}") for k in TERM_KEYS if k in c}
+        if "fixed_fee" in terms and ("min_fee" in terms or "cap" in terms):
+            raise ConfigError(f"client '{name}': fixed_fee cannot be combined with min_fee or cap")
+        if "min_fee" in terms and "cap" in terms and terms["min_fee"] > terms["cap"]:
+            raise ConfigError(f"client '{name}': min_fee ({terms['min_fee']:g}) is above cap ({terms['cap']:g})")
         rules.append({
             "name": name,
+            "terms": terms,
             "cwd": _patterns(c.get("cwd", []), f"client '{name}' cwd"),
             "branch": _patterns(c.get("branch", []), f"client '{name}' branch"),
             "markup": _number(c.get("markup", default_markup), f"client '{name}' markup"),

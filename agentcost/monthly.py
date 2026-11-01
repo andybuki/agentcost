@@ -10,6 +10,7 @@ from datetime import date
 from html import escape
 
 from . import analytics as A
+from .billing import REASONS, settle
 from .rules import UNASSIGNED
 
 def month_range(month):
@@ -20,17 +21,20 @@ def month_range(month):
 def build(recs, cfg, rules, client, month):
     start, end = month_range(month)
     cur = A.select(recs, start, end, client)
-    markup = next((r["markup"] for r in rules if r["name"] == client), 0.0)
+    rule = next((r for r in rules if r["name"] == client), None)
+    markup = rule["markup"] if rule else 0.0
     weeks = defaultdict(lambda: {"cost": 0.0, "billable": 0.0, "turns": 0})
     for r in cur:
         w = weeks[A.bucket_key(r["day"], "week")]
         w["cost"] += r["cost"]; w["billable"] += r["billable"]; w["turns"] += 1
     unpriced = sorted({r["model"] for r in cur if not r["priced"]})
+    summary = A.summary(cur)
+    billing = settle(summary["billable"], rule["terms"] if rule else None)
     return {
         "client": client, "month": month, "start": start, "end": end, "markup": markup,
         "currency": cfg.get("currency_symbol", "USD"), "rate": cfg.get("currency_rate", 1.0),
         "company": (cfg.get("company") or {}).get("name", ""),
-        "summary": A.summary(cur),
+        "summary": summary, "billing": billing,
         "projects": A.breakdown(cur, "project"),
         "models": A.breakdown(cur, "model"),
         "weeks": [{"week": k, **v} for k, v in sorted(weeks.items())],
@@ -59,18 +63,26 @@ def render(d, internal=False, generated=None, nav=None):
         th = "".join(f'<th class="{"r" if i >= right_from else ""}">{escape(h)}</th>' for i, h in enumerate(head))
         body = "".join("<tr>" + "".join(f'<td class="{"r" if i >= right_from else ""}">{c}</td>'
                                         for i, c in enumerate(r)) + "</tr>" for r in rows)
-        tf = ("<tfoot><tr>" + "".join(f'<td class="{"r" if i >= right_from else ""}">{c}</td>'
-                                      for i, c in enumerate(foot)) + "</tr></tfoot>") if foot else ""
+        tf = ("<tfoot>" + "".join(
+            "<tr>" + "".join(f'<td class="{"r" if i >= right_from else ""}">{c}</td>'
+                             for i, c in enumerate(row)) + "</tr>" for row in foot) + "</tfoot>") if foot else ""
         return f"<table><thead><tr>{th}</tr></thead><tbody>{body}</tbody>{tf}</table>"
 
     def amount_cols(row):
         return [m(row["cost"]), m(row["billable"])] if internal else [m(row["billable"])]
     amount_head = ["Cost", "Billable"] if internal else ["Amount"]
 
+    b = d["billing"]
+    foot = [["Total", str(s["sessions"]), _tokens(s["tokens"]), *amount_cols(s)]]
+    if b["rule"]:  # terms changed the amount: show usage, adjustment and what is invoiced
+        blank = [""] if internal else []
+        foot = [["Usage value", str(s["sessions"]), _tokens(s["tokens"]), *amount_cols(s)],
+                [escape(REASONS[b["rule"]]), "", "", *blank, m(b["adjustment"])],
+                ["Total", "", "", *blank, m(b["amount"])]]
     projects = table(["Project", "Sessions", "Tokens", *amount_head],
                      [[escape(p["name"]), str(p["sessions"]), _tokens(p["tokens"]), *amount_cols(p)]
                       for p in d["projects"]],
-                     foot=["Total", str(s["sessions"]), _tokens(s["tokens"]), *amount_cols(s)])
+                     foot=foot)
     models = table(["Model", "Turns", "Tokens", *amount_head],
                    [[escape(x["name"]), str(x["turns"]), _tokens(x["tokens"]), *amount_cols(x)]
                     for x in d["models"]])
@@ -82,12 +94,12 @@ def render(d, internal=False, generated=None, nav=None):
                        _tokens(s_["tokens"]), *amount_cols(s_)] for s_ in d["sessions"]],
                      right_from=4)
 
-    tiles = [("Amount for " + month_name if not internal else "Billable", m(s["billable"])),
+    tiles = [("Amount for " + month_name if not internal else "Billable", m(b["amount"])),
              ("Sessions", str(s["sessions"])), ("Agent turns", f"{s['turns']:,}".replace(",", " ")),
              ("Tokens", _tokens(s["tokens"]))]
     if internal:
         tiles[1:1] = [("API-equivalent cost", m(s["cost"])), ("Markup", f"× {d['markup']:g}"),
-                      ("Margin", m(s["margin"]))]
+                      ("Margin", m(b["amount"] - s["cost"]))]
     tiles_html = "".join(f'<div class="tile"><div class="k">{escape(k)}</div><div class="v">{v}</div></div>'
                          for k, v in tiles)
 
@@ -96,6 +108,9 @@ def render(d, internal=False, generated=None, nav=None):
              + (f" and multiplied by {d['markup']:g}." if internal else ".")]
     notes.append("Only usage metadata (time, project folder, branch, model, token counts) was "
                  "used — no prompts, answers or code.")
+    if b["rule"]:
+        notes.append(escape(REASONS[b["rule"]]) + " applies to this month; the tables below show "
+                     "the usage value before that adjustment.")
     if d["unpriced"]:
         notes.append("Models without a price are not included: " + escape(", ".join(d["unpriced"])) + ".")
     if not d["known_client"]:
