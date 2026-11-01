@@ -91,3 +91,12 @@ python -m pytest
 
 The Cloudflare Worker has its own tests: `cd cloud/worker; node --test test/worker.test.mjs`.
 Roadmap: [PLAN.md](PLAN.md).
+
+## License
+
+Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE):
+free for personal, educational and non-profit use. **Commercial use** (for
+example billing clients, use inside a business, or reselling) needs a
+separate license — see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+Contributions: [CONTRIBUTING.md](CONTRIBUTING.md). Security:
+[SECURITY.md](SECURITY.md). Not affiliated with Anthropic.

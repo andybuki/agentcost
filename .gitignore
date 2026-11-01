@@ -6,3 +6,12 @@ node_modules/
 .wrangler/
 clients.toml
 reports/
+.env
+.env.*
+.dev.vars
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+.venv/
+venv/
