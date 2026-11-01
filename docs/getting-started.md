@@ -84,7 +84,33 @@ loads nothing from the internet. You see:
 Edit `clients.toml`, reload the page: all history is re-attributed. Stop the
 server with Ctrl+C in PowerShell.
 
-## 5. Optional: count cloud sessions
+## 5. Monthly report per client
+
+In the web view's client table, click **Report ↗** next to a client (or, after
+clicking a client, **Monthly report** at the top). A printable page opens:
+
+- **client version** (default): the amount to bill, by project, model, week and
+  session — no cost, markup or margin;
+- **internal version**: also cost, markup and margin.
+
+Use **Print / save as PDF** to get a PDF for the client. ← / → switch months.
+
+Or create HTML files for every client with activity in a month:
+
+```powershell
+python -m agentcost monthly --month 2026-10
+python -m agentcost monthly --month 2026-10 --client "Acme GmbH" --internal
+```
+
+Files go to the `reports` folder; open one in a browser and print to PDF.
+Optional: put your company name on the reports by adding to `clients.toml`:
+
+```toml
+[company]
+name = "Bukhman IT-Beratung"
+```
+
+## 6. Optional: count cloud sessions
 
 Sessions in Claude Code on the web / ☁ in the Claude app run on Anthropic's
 servers; their logs never reach your PC. To include them, set up a small
@@ -93,13 +119,14 @@ collector once (~15 minutes): [cloud.md](cloud.md).
 After that, `serve`, `report` and `doctor` fetch new cloud sessions
 automatically; the page header shows "N turns from cloud sessions".
 
-## 6. Everyday use
+## 7. Everyday use
 
 | Want to | Command |
 |---|---|
 | look at numbers | `python -m agentcost serve --open` (then **Refresh data** for new sessions) |
 | table in the terminal | `python -m agentcost report --month 2026-10` |
 | CSV for a month | `python -m agentcost report --month 2026-10 --csv oktober.csv` |
+| reports for the client | **Report ↗** in the web view, or `python -m agentcost monthly --month 2026-10` |
 | check what's found / missing | `python -m agentcost doctor` |
 | new client folder appeared | add a `[[client]]` rule, or see `python -m agentcost init --print` for suggestions |
 | update agentcost | `git pull` |
@@ -109,7 +136,7 @@ agentcost command copies new entries into `~/.agentcost/agentcost.db` first,
 and that database keeps them. Run any command at least every few weeks (or
 schedule `python -m agentcost ingest`).
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -125,4 +152,4 @@ schedule `python -m agentcost ingest`).
 
 Only metadata: time, folder, git branch, model and token counts. Never prompt
 text, answers or file contents. No AI calls. Everything stays on your PC,
-except cloud-session metadata if you set up your own collector (step 5).
+except cloud-session metadata if you set up your own collector (step 6).

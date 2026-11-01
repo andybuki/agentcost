@@ -109,7 +109,9 @@ function syncControls() {
   const crumbs = $("#crumbs");
   crumbs.hidden = !state.client;
   crumbs.innerHTML = state.client
-    ? `<a href="#" id="crumb-all">All clients</a> › <strong>${esc(state.client)}</strong>` : "";
+    ? `<a href="#" id="crumb-all">All clients</a> › <strong>${esc(state.client)}</strong>
+       · <a href="${esc(reportUrl(state.client))}" target="_blank" rel="noopener">Monthly report ${esc(reportMonth())} ↗</a>
+       · <a href="${esc(reportUrl(state.client, "internal"))}" target="_blank" rel="noopener">internal</a>` : "";
   if (state.client) $("#crumb-all").onclick = (e) => { e.preventDefault(); state.client = ""; state.by = "client"; load(); };
 }
 
@@ -334,6 +336,11 @@ const COLS = [
   { key: "share", label: "Share", fmt: (v) => `<span class="share"><i style="width:${Math.round(v * 48)}px"></i>${(v * 100).toFixed(0)} %</span>` },
 ];
 
+// Monthly report for the month the selected period ends in.
+const reportMonth = () => state.to.slice(0, 7);
+const reportUrl = (client, view = "client") =>
+  `report?${new URLSearchParams({ client, month: reportMonth(), view })}`;
+
 function renderTable(r) {
   const dimLabel = { client: "Client", project: "Project", model: "Model" }[r.by];
   $("#table-title").textContent = `${dimLabel}s`;
@@ -349,10 +356,13 @@ function renderTable(r) {
     return `<th data-key="${c.key}"${s}>${c.label ?? dimLabel}${arrow}</th>`;
   }).join("");
   const canDrill = r.by === "client" && !r.client;
+  const showReport = canDrill && meta.has_clients;
   const body = rows.map((row) => {
     const cells = cols.map((c) => c.key === "name"
       ? `<td><span class="name">${swatch(row.name)}${esc(row.name)}</span></td>`
-      : `<td>${c.fmt(row[c.key])}</td>`).join("");
+      : `<td>${c.fmt(row[c.key])}</td>`).join("")
+      + (showReport ? `<td>${row.name === UNASSIGNED ? "" :
+          `<a class="report-link" href="${esc(reportUrl(row.name))}" target="_blank" rel="noopener">Report ↗</a>`}</td>` : "");
     return `<tr${canDrill ? ` class="drill" data-name="${esc(row.name)}" tabindex="0"` : ""}>${cells}</tr>`;
   }).join("");
   const sum = (k) => r.table.reduce((a, x) => a + x[k], 0);
@@ -362,7 +372,9 @@ function renderTable(r) {
   tot.delta = tot.cost - tot.cmp_cost;
   tot.delta_pct = tot.cmp_cost ? tot.delta / tot.cmp_cost : null;
   const foot = cols.map((c) => `<td>${c.key === "name" ? "Total" : c.fmt(tot[c.key])}</td>`).join("");
-  $("#table").innerHTML = `<thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot>`;
+  const extraHead = showReport ? `<th class="static" title="Monthly report for ${esc(reportMonth())}">Report ${esc(reportMonth())}</th>` : "";
+  const extraFoot = showReport ? "<td></td>" : "";
+  $("#table").innerHTML = `<thead><tr>${head}${extraHead}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}${extraFoot}</tr></tfoot>`;
   $("#table-hint").textContent = canDrill ? "Click a client to see its projects." :
     r.client ? "Sessions counts are per project; a session can appear under several." : "";
 
@@ -373,7 +385,7 @@ function renderTable(r) {
   });
   $("#table").querySelectorAll("tr.drill").forEach((tr) => {
     const go = () => { state.client = tr.dataset.name; state.by = "project"; load(); };
-    tr.onclick = go;
+    tr.onclick = (e) => { if (!e.target.closest("a")) go(); };
     tr.onkeydown = (e) => { if (e.key === "Enter") go(); };
   });
 }

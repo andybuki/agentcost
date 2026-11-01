@@ -169,6 +169,36 @@ def cmd_init(a):
     print("Next: open it, rename clients, merge folders, set markups. Then:")
     print("  python -m agentcost serve --open")
 
+def cmd_monthly(a):
+    import re
+    from . import monthly
+    cfg, rules = load_config(a.config)
+    try:
+        monthly.month_range(a.month)
+    except ValueError:
+        sys.exit("agentcost: --month must look like 2026-10")
+    con = connect(a.db)
+    collect(con, a)
+    recs, _ = A.enrich(load_turns(con), cfg, rules)
+    con.close()
+    if a.client:
+        clients = [a.client]
+    else:  # every client with activity in that month
+        start, end = monthly.month_range(a.month)
+        # Internal work (markup 0) has nothing to bill; it shows up with --internal.
+        clients = [r["name"] for r in A.breakdown(A.select(recs, start, end), "client")
+                   if r["name"] != UNASSIGNED and (a.internal or r["billable"] > 0)]
+        if not clients:
+            sys.exit(f"agentcost: no client activity in {a.month}")
+    out_dir = Path(a.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for client in clients:
+        html = monthly.render(monthly.build(recs, cfg, rules, client, a.month), a.internal)
+        slug = re.sub(r"[^A-Za-z0-9]+", "-", client).strip("-").lower() or "client"
+        path = out_dir / f"{slug}-{a.month}{'-internal' if a.internal else ''}.html"
+        path.write_text(html, encoding="utf-8")
+        print(f"{path}  — open it in a browser, then Print / save as PDF")
+
 def cmd_tokens(a):
     import secrets
     print(f"INGEST token (cloud environment, AGENTCOST_INGEST_TOKEN): {secrets.token_urlsafe(32)}")
@@ -302,6 +332,13 @@ def main(argv=None):
     p.add_argument("--force", action="store_true", help="overwrite an existing file")
     p.add_argument("--print", action="store_true", help="print the suggestion instead of writing")
     p.set_defaults(fn=cmd_init)
+    p = sub.add_parser("monthly", parents=[common], help="monthly report per client (HTML, print to PDF)")
+    p.add_argument("--config", default="clients.toml", help="default: clients.toml in this folder")
+    p.add_argument("--month", required=True, help="YYYY-MM")
+    p.add_argument("--client", help="client name (default: every client with activity)")
+    p.add_argument("--internal", action="store_true", help="include cost, markup and margin")
+    p.add_argument("--out-dir", default="reports", help="folder for the HTML files (default: reports)")
+    p.set_defaults(fn=cmd_monthly)
     p = sub.add_parser("tokens", help="create a new ingest + read token pair")
     p.set_defaults(fn=cmd_tokens)
     p = sub.add_parser("collector", help="run a self-hosted collector (instead of Cloudflare)")

@@ -5,12 +5,13 @@ The view is read-only — clients.toml stays the only place rules are edited;
 it is re-read whenever it changes, so edits show up on the next reload.
 """
 import csv, io, json, threading
-from datetime import date
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from . import analytics as A
+from . import monthly
 from .parse import log_files
 from .rules import UNASSIGNED, ConfigError, load_config
 from .store import connect, ingest, load_turns
@@ -143,6 +144,27 @@ class App:
             "unpriced": sorted(unpriced),
         }
 
+    def monthly_report(self, q):
+        cfg, rules = load_config(self.config)  # validates; the cache has no rules
+        _, recs, _, _ = self.data()
+        client = q.get("client")
+        if not client:
+            raise BadRequest("missing 'client'")
+        month = q.get("month") or date.today().strftime("%Y-%m")
+        try:
+            start, _ = monthly.month_range(month)
+        except ValueError:
+            raise BadRequest("'month' must be YYYY-MM")
+        internal = q.get("view") == "internal"
+        prev = (start.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+        nxt = (monthly.month_range(month)[1] + timedelta(days=1)).strftime("%Y-%m")
+        link = lambda m, view: "report?" + urlencode({"client": client, "month": m, "view": view})
+        view = "internal" if internal else "client"
+        nav = [("← " + prev, link(prev, view)), (nxt + " →", link(nxt, view)),
+               ("client version" if internal else "internal version",
+                link(month, "client" if internal else "internal"))]
+        return monthly.render(monthly.build(recs, cfg, rules, client, month), internal, nav=nav)
+
     def export_csv(self, q):
         r = self.report(q)
         cols = ["name", "cost", "cmp_cost", "delta", "delta_pct", "billable",
@@ -205,6 +227,8 @@ def make_handler(app, port):
                     return self._json(app.meta())
                 if u.path == "/api/report":
                     return self._json(app.report(q))
+                if u.path == "/report":
+                    return self._send(200, app.monthly_report(q), "text/html; charset=utf-8")
                 if u.path == "/api/export.csv":
                     name = f"agentcost_{q.get('from', '')}_{q.get('to', '')}.csv"
                     return self._send(200, app.export_csv(q), "text/csv; charset=utf-8",

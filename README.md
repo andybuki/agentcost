@@ -10,6 +10,8 @@ a table / CSV.
 - **Private:** never reads prompts, answers or code; no AI calls; runs on your PC.
 - **Local and cloud sessions:** Claude Code on your PC, plus cloud sessions
   (Claude Code on the web) via your own small collector.
+- **Monthly report per client:** printable page / PDF with the amount to bill,
+  by project, model, week and session.
 - **History kept:** a local database keeps everything after Claude Code deletes
   its logs.
 - **No dependencies:** Python 3.11+ only.
@@ -55,6 +57,7 @@ All commands start with `python -m agentcost` (or `agentcost` after
 | `doctor` | show log folders, models (with price source), clients and unassigned folders |
 | `serve` | web view on `127.0.0.1` (`--port`, `--open`) |
 | `report` | per-client table in the terminal (`--month 2026-10`, `--csv file.csv`) |
+| `monthly` | printable monthly report per client (`--month`, `--client`, `--internal`); also via **Report ↗** in the web view |
 | `ingest` | only copy new log entries into the local database |
 | `sync` | download cloud-session data from your collector (automatic once set up) |
 | `cloud-setup` | print the setup script for your cloud environment |
