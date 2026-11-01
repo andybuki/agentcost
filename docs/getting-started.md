@@ -107,7 +107,7 @@ Optional: put your company name on the reports by adding to `clients.toml`:
 
 ```toml
 [company]
-name = "Bukhman IT-Beratung"
+name = "Buchmann IT-Beratung"
 ```
 
 ## 6. Optional: count cloud sessions
