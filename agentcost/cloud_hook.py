@@ -1,30 +1,66 @@
 #!/usr/bin/env python3
-"""agentcost cloud hook — sends usage metadata of a Claude Code cloud session.
+"""agentcost hook — sends usage metadata of Claude Code sessions to your collector.
 
-Runs as a Claude Code "Stop" hook inside a cloud session. It reads the new lines
-of the session transcript, keeps only metadata (time, folder, branch, model,
-token counts — never prompt text or code) and POSTs them to your own agentcost
-collector (a Cloudflare Worker).
+Runs as a Claude Code "Stop" hook, in a cloud session or on any other computer
+(a second PC, a laptop). It reads the new lines of the session transcript, keeps
+only metadata (time, folder, branch, model, token counts, device name — never
+prompt text or code) and POSTs them to your own agentcost collector.
 
 Standalone on purpose: `python -m agentcost cloud-setup` embeds this file in a
 setup script, so the cloud container needs nothing but Python 3.
+`python -m agentcost hook-setup` installs it on a local computer.
 
-Configuration (environment variables of the cloud environment):
+Configuration — environment variables (cloud environments), or
+~/.agentcost-hook/config.json written by `hook-setup` (local computers):
   AGENTCOST_URL           collector URL, e.g. https://agentcost.<you>.workers.dev
   AGENTCOST_INGEST_TOKEN  write-only token
+  AGENTCOST_DEVICE        optional name for this device (default: "cloud" in a
+                          cloud session, else the computer's host name)
 
 It never fails the session: every error is swallowed and the unsent lines are
 retried on the next Stop. To see what goes wrong, run it by hand:
   python3 ~/.agentcost-hook/agentcost_hook.py check
+To send all transcripts still on this computer (e.g. right after installing):
+  python3 ~/.agentcost-hook/agentcost_hook.py backfill
 """
-import json, os, sys, urllib.request
+import json, os, socket, sys, urllib.request
 from pathlib import Path
 
-STATE = Path(os.environ.get("AGENTCOST_HOOK_STATE", "~/.agentcost-hook/state.json")).expanduser()
+HOOK_DIR = Path("~/.agentcost-hook").expanduser()
+STATE = Path(os.environ.get("AGENTCOST_HOOK_STATE", HOOK_DIR / "state.json")).expanduser()
+CONFIG = HOOK_DIR / "config.json"
 BATCH = 500
 TIMEOUT = 5
 # Cloudflare rejects Python's default "Python-urllib/x.y" agent (error 1010).
 USER_AGENT = "agentcost-hook/1.0"
+
+def device_name():
+    name = os.environ.get("AGENTCOST_DEVICE", "").strip()
+    if name:
+        return name[:100]
+    if os.environ.get("CLAUDE_CODE_REMOTE"):
+        return "cloud"  # container host names are random; one name for all cloud sessions
+    return (socket.gethostname() or "unknown")[:100]
+
+def settings(config_path=None):
+    """(url, token, device): environment variables win over config.json."""
+    try:
+        cfg = json.loads(Path(config_path or CONFIG).read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    url = os.environ.get("AGENTCOST_URL") or cfg.get("url")
+    token = os.environ.get("AGENTCOST_INGEST_TOKEN") or cfg.get("ingest_token")
+    device = os.environ.get("AGENTCOST_DEVICE") or cfg.get("device")
+    return url, token, (device or device_name())[:100]
+
+def transcript_dirs():
+    dirs = [Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects"] if os.environ.get("CLAUDE_CONFIG_DIR") else []
+    return dirs + [Path("~/.config/claude/projects").expanduser(), Path("~/.claude/projects").expanduser()]
+
+def transcripts():
+    """All transcript files on this computer, oldest first."""
+    files = {p.resolve() for d in transcript_dirs() if d.is_dir() for p in d.glob("**/*.jsonl")}
+    return sorted(files, key=lambda p: p.stat().st_mtime)
 
 def metadata(line):
     """Same fields as agentcost.parse.parse_line — keep the two in sync."""
@@ -92,7 +128,7 @@ def save_state(state):
     tmp.write_text(json.dumps(state))
     tmp.replace(STATE)
 
-def run(hook_input, url, token):
+def run(hook_input, url, token, device=None):
     path = hook_input.get("transcript_path")
     token = (token or "").strip()
     if not (url and token and path and os.path.isfile(path)):
@@ -102,38 +138,53 @@ def run(hook_input, url, token):
     if os.path.getsize(path) < offset:
         offset = 0  # transcript rewritten
     turns, new_offset = new_turns(path, offset)
+    device = (device or device_name())[:100]
+    for t in turns:
+        t["device"] = device
     for i in range(0, len(turns), BATCH):
         post(url, token, turns[i:i + BATCH])
     state[path] = new_offset
     save_state(state)
     return len(turns)
 
-def check():
-    """Manual test inside a cloud session: send the newest transcript, print the outcome."""
-    url, token = os.environ.get("AGENTCOST_URL"), os.environ.get("AGENTCOST_INGEST_TOKEN")
+def send(files, url, token, device):
+    """Send new turns of `files`; prints the outcome. Returns an exit code."""
     if not (url and token):
-        print("AGENTCOST_URL and AGENTCOST_INGEST_TOKEN are not set in this environment.")
+        print("AGENTCOST_URL and AGENTCOST_INGEST_TOKEN are not set in this environment "
+              f"(and {CONFIG} has no url / ingest_token).")
         return 1
-    files = sorted(Path("~/.claude/projects").expanduser().glob("*/*.jsonl"),
-                   key=lambda p: p.stat().st_mtime)
     if not files:
-        print("No Claude Code transcript found in ~/.claude/projects.")
+        print("No Claude Code transcript found in: " + ", ".join(str(d) for d in transcript_dirs()))
         return 1
+    n = 0
     try:
-        n = run({"transcript_path": str(files[-1])}, url, token)
+        for f in files:
+            n += run({"transcript_path": str(f)}, url, token, device)
     except Exception as e:
         print(f"Sending to {url} failed: {e}")
         print("Is the host allowed under the environment's Network access? Is the token right?")
         return 1
-    print(f"OK: {n} new turns sent to {url}")
+    print(f"OK: {n} new turns sent to {url} as device '{device}'")
     return 0
+
+def check():
+    """Manual test: send the newest transcript, print the outcome."""
+    url, token, device = settings()
+    return send(transcripts()[-1:], url, token, device)
+
+def backfill():
+    """Send every transcript still on this computer (Claude Code keeps about 30 days)."""
+    url, token, device = settings()
+    return send(transcripts(), url, token, device)
 
 def main():
     if sys.argv[1:] == ["check"]:
         return check()
+    if sys.argv[1:] == ["backfill"]:
+        return backfill()
     try:
         hook_input = json.loads(sys.stdin.read() or "{}")
-        run(hook_input, os.environ.get("AGENTCOST_URL"), os.environ.get("AGENTCOST_INGEST_TOKEN"))
+        run(hook_input, *settings())
     except Exception as e:  # never break the user's session
         if os.environ.get("AGENTCOST_HOOK_DEBUG"):
             print(f"agentcost hook: {e}", file=sys.stderr)

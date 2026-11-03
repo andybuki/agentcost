@@ -26,6 +26,35 @@ def project_name(cwd):
         return NO_REPO
     return PurePosixPath(path).name or path
 
+def device_label(t):
+    """Name of the device that reported a turn; rows from older versions have none."""
+    return t.get("device") or ("cloud" if t.get("source") == "cloud" else "local")
+
+# A device is "quiet" when others reported at least this many days after it.
+QUIET_DAYS = 3
+
+def devices(recs):
+    """Per reporting device: turns, first and last local day, and whether it went quiet.
+
+    A device that stops reporting (hook missing in a new cloud environment, a
+    laptop without the hook) looks exactly like a day without work, so callers
+    show this list and flag quiet devices.
+    """
+    out = {}
+    for r in recs:
+        d = out.setdefault(r["device"], {"device": r["device"], "source": r["source"], "turns": 0,
+                                         "first_day": r["day"], "last_day": r["day"]})
+        d["turns"] += 1
+        d["first_day"] = min(d["first_day"], r["day"])
+        d["last_day"] = max(d["last_day"], r["day"])
+    if not out:
+        return []
+    newest = max(d["last_day"] for d in out.values())
+    for d in out.values():
+        d["behind_days"] = (newest - d["last_day"]).days
+        d["quiet"] = d["behind_days"] >= QUIET_DAYS
+    return sorted(out.values(), key=lambda d: (-d["last_day"].toordinal(), d["device"]))
+
 def enrich(turns, cfg, rules):
     """Attach local day, client, project, cost and billable amount to each turn.
 
@@ -57,6 +86,7 @@ def enrich(turns, cfg, rules):
         out.append({
             "day": dt.date(), "dt": dt, "client": client, "model": model,
             "source": t.get("source") or "local",
+            "device": device_label(t),
             "project": project_name(t["cwd"]),
             "session": t["session"], "cwd": normalize_path(t["cwd"]), "branch": t["branch"],
             "in": t["in"], "out": t["out"], "cw": t["cw"], "cr": t["cr"],

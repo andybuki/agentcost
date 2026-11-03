@@ -61,7 +61,7 @@ test("unknown fields are dropped, not stored", async () => {
   assert.ok(!JSON.stringify(page).includes("SECRET"));
 });
 
-test("old database without the 1-hour column is migrated on first use", async () => {
+test("old database without the 1-hour and device columns is migrated on first use", async () => {
   const e = env();
   // Simulate a database created by the first schema: rebuild turns without the column.
   const raw = e.DB;
@@ -71,8 +71,9 @@ test("old database without the 1-hour column is migrated on first use", async ()
     tok_in INTEGER NOT NULL DEFAULT 0, tok_out INTEGER NOT NULL DEFAULT 0,
     cache_write INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0,
     received_at TEXT NOT NULL, UNIQUE (msg_id, request_id))`).run();
-  const r = await post(e, { turns: [turn("a", { cw1h: 7 })] });
+  const r = await post(e, { turns: [turn("a", { cw1h: 7, device: "laptop" })] });
   assert.equal(r.status, 200);
   const page = await (await get(e)).json();
   assert.equal(page.turns[0].cw1h, 7);
+  assert.equal(page.turns[0].device, "laptop");
 });

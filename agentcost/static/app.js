@@ -157,6 +157,11 @@ function render() {
       (or run <code>python -m agentcost doctor</code> for a ready-made one).`);
   if (meta.cloud?.error)
     warn.push(`Cloud sessions could not be synced: ${esc(meta.cloud.error)}. Showing what was synced before.`);
+  const quiet = (meta.devices || []).filter((d) => d.quiet);
+  if (quiet.length)
+    warn.push(`No usage from ${quiet.map((d) => `<b>${esc(d.device)}</b> since ${fmtDate(d.last_day)}`).join(", ")},
+      although other devices reported later. If you worked there, its hook is not reporting —
+      see <code>docs/cloud.md</code>, “Several devices”.`);
   $("#warnings").innerHTML = warn.map((w) => `<div class="warn">${w}</div>`).join("");
   $("#notice").innerHTML = meta.has_clients || r.client ? "" :
     `<div class="note">No work is matched to a client yet, so this view shows usage by model and project.
@@ -474,6 +479,7 @@ async function init() {
   $("#data-range").textContent = meta.first_day
     ? `data ${fmtDate(meta.first_day)} – ${fmtDate(meta.last_day)} · ${int(meta.turns_stored)} turns stored`
       + (meta.cloud.configured ? ` (${int(meta.cloud.turns)} from cloud sessions)` : "") + ` · ${meta.timezone}`
+      + (meta.devices.length > 1 ? ` · devices: ${meta.devices.map((d) => `${d.device} (last ${fmtDate(d.last_day)})`).join(", ")}` : "")
     : "no data yet — run Claude Code, then Refresh";
   const fromUrl = new URLSearchParams(location.search);
   readUrl();

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS turns (
   cache_write INTEGER NOT NULL DEFAULT 0,
   cache_read  INTEGER NOT NULL DEFAULT 0,
   cache_write_1h INTEGER NOT NULL DEFAULT 0,  -- share of cache_write with 1-hour TTL
+  device      TEXT NOT NULL DEFAULT '',        -- 'cloud' or the reporting computer's name
   received_at TEXT NOT NULL,
   UNIQUE (msg_id, request_id)
 );
