@@ -128,6 +128,12 @@ def test_devices_flags_only_devices_behind_the_others():
     assert (by["laptop"]["behind_days"], by["laptop"]["quiet"]) == (5, True)
     assert A.devices([]) == []
 
+def test_long_unused_device_is_inactive_not_quiet():
+    by = {d["device"]: d for d in A.devices([rec("cloud", date(2026, 11, 3)),
+                                             rec("old-pc", date(2026, 4, 17), "local")])}
+    assert (by["old-pc"]["quiet"], by["old-pc"]["inactive"]) == (False, True)
+    assert by["cloud"]["inactive"] is False
+
 def test_doctor_lists_devices(config_path, write_log, tmp_path, capsys):
     logs = write_log([make_entry()])
     main(["doctor", "--config", str(config_path), "--logs", str(logs), "--db", str(tmp_path / "t.db"),

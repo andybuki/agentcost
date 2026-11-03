@@ -30,8 +30,11 @@ def device_label(t):
     """Name of the device that reported a turn; rows from older versions have none."""
     return t.get("device") or ("cloud" if t.get("source") == "cloud" else "local")
 
-# A device is "quiet" when others reported at least this many days after it.
+# A device is "quiet" when others reported at least QUIET_DAYS after it — but
+# only up to INACTIVE_DAYS: a device unused for a month (an old PC, a laptop you
+# stopped using) is "inactive", which is normal and not worth a warning.
 QUIET_DAYS = 3
+INACTIVE_DAYS = 30
 
 def devices(recs):
     """Per reporting device: turns, first and last local day, and whether it went quiet.
@@ -52,7 +55,8 @@ def devices(recs):
     newest = max(d["last_day"] for d in out.values())
     for d in out.values():
         d["behind_days"] = (newest - d["last_day"]).days
-        d["quiet"] = d["behind_days"] >= QUIET_DAYS
+        d["inactive"] = d["behind_days"] >= INACTIVE_DAYS
+        d["quiet"] = QUIET_DAYS <= d["behind_days"] < INACTIVE_DAYS
     return sorted(out.values(), key=lambda d: (-d["last_day"].toordinal(), d["device"]))
 
 def enrich(turns, cfg, rules):

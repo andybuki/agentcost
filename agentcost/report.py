@@ -304,7 +304,8 @@ def cmd_doctor(a):
     print("\nDevices (where usage came from):")
     devs = A.devices(recs)
     for d in devs:
-        note = f"  <- quiet: {d['behind_days']} days behind the newest data" if d["quiet"] else ""
+        note = (f"  <- quiet: {d['behind_days']} days behind the newest data" if d["quiet"]
+                else "  (inactive)" if d["inactive"] else "")
         print(f"  {d['device']:24} {d['source']:5} {d['turns']:>7} turns  "
               f"{d['first_day']} .. {d['last_day']}{note}")
     if any(d["quiet"] for d in devs):

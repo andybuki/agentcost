@@ -39,7 +39,7 @@ client or billing layer).
   - Several devices: the hook also runs on other computers
     (`hook-setup` → `~/.agentcost-hook/config.json`); every turn carries a
     `device` ("cloud", host name, or `local`/`cloud` for old rows).
-    `analytics.devices` flags devices ≥3 days behind the others (`doctor`, web
+    `analytics.devices` flags devices 3–29 days behind the others (≥30: inactive) (`doctor`, web
     warning) — a silent device otherwise looks like a day without work.
 - `clients.toml` — the user's rules (git-ignored, created by `init`); validated
   with clear `ConfigError` messages. `clients.example.toml` is the demo config.

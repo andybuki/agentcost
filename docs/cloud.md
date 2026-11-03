@@ -286,8 +286,8 @@ name in `~/.agentcost-hook/config.json`, adds a Stop hook to
 itself: its logs are read directly (it would do no harm — turns are counted once).
 
 **Spotting a device that stopped reporting:** `doctor` lists every device with
-its first and last day, and the web view warns when a device is 3 or more days
-behind the others. A day without any data can mean "no work" or "nothing was
+its first and last day, and the web view warns when a device is 3 to 29 days
+behind the others (after 30 days it counts as inactive, without a warning). A day without any data can mean "no work" or "nothing was
 reported" — the device list tells you which.
 
 **Device names** come from the hook: `cloud` for cloud sessions, the computer's
