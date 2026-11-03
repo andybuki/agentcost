@@ -3,7 +3,7 @@
 Only raw token counts are stored. Client, project and cost are derived at
 query time from clients.toml, so a fixed rule or price re-attributes history.
 """
-import sqlite3, time
+import socket, sqlite3, time
 from pathlib import Path
 
 from .parse import log_files, read_file
@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS turns (
     source_file TEXT,
     ingested_at TEXT,
     source      TEXT NOT NULL DEFAULT 'local',  -- 'local' log file or 'cloud' collector
+    device      TEXT NOT NULL DEFAULT '',       -- computer that wrote the log, or 'cloud'
     PRIMARY KEY (msg_id, request_id)
 );
 CREATE INDEX IF NOT EXISTS turns_ts ON turns(ts);
@@ -46,8 +47,8 @@ CREATE TABLE IF NOT EXISTS sync_state (
 # the column was added); everything else about a stored turn never changes.
 INSERT_TURN = """INSERT INTO turns
     (msg_id, request_id, ts, session, cwd, branch, model,
-     tok_in, tok_out, cache_write, cache_read, cache_write_1h, source_file, ingested_at, source)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     tok_in, tok_out, cache_write, cache_read, cache_write_1h, source_file, ingested_at, source, device)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT (msg_id, request_id) DO UPDATE SET cache_write_1h = excluded.cache_write_1h
     WHERE excluded.cache_write_1h > turns.cache_write_1h"""
 
@@ -60,6 +61,9 @@ def connect(db_path=DEFAULT_DB):
     # Stores created before cloud sync have no source column.
     if "source" not in columns:
         con.execute("ALTER TABLE turns ADD COLUMN source TEXT NOT NULL DEFAULT 'local'")
+    # Stores created before devices were recorded: old rows show as "local" / "cloud".
+    if "device" not in columns:
+        con.execute("ALTER TABLE turns ADD COLUMN device TEXT NOT NULL DEFAULT ''")
     # Stores created before 1-hour cache pricing: add the column and re-read all
     # log files once, so the share is filled in for history still on disk.
     if "cache_write_1h" not in columns:
@@ -78,12 +82,16 @@ def insert_turns(con, rows):
     con.executemany(INSERT_TURN, [
         (t["msg_id"], t["request_id"] or "", t["ts"], t["session"], t["cwd"], t["branch"],
          t["model"], t["in"], t["out"], t["cw"], t["cr"], t.get("cw1h", 0) or 0,
-         src_file, now, source)
+         src_file, now, source, (t.get("device") or "")[:100])
         for t, src_file, source in rows])
     return con.execute("SELECT COUNT(*) FROM turns").fetchone()[0] - before
 
+def local_device():
+    return socket.gethostname() or "local"
+
 def ingest(con, log_dirs):
     """Read new lines from all log files. Idempotent; returns number of new turns."""
+    device = local_device()
     known = {r[0]: r[1:] for r in con.execute("SELECT path, size, mtime, offset FROM files")}
     added = 0
     for f in log_files(log_dirs):
@@ -97,6 +105,7 @@ def ingest(con, log_dirs):
         turns, new_offset = read_file(f, offset)
         for t in turns:
             t["msg_id"] = t["msg_id"] or f"{path}:{t['pos']}"
+            t["device"] = device
         added += insert_turns(con, [(t, path, "local") for t in turns])
         con.execute("INSERT OR REPLACE INTO files VALUES (?,?,?,?)",
                     (path, st.st_size, st.st_mtime, new_offset))
@@ -106,8 +115,8 @@ def ingest(con, log_dirs):
 def load_turns(con):
     """All stored turns as dicts in the same shape parse.iter_turns yields."""
     cur = con.execute("""SELECT msg_id, request_id, ts, session, cwd, branch, model,
-                                tok_in, tok_out, cache_write, cache_read, cache_write_1h, source
+                                tok_in, tok_out, cache_write, cache_read, cache_write_1h, source, device
                          FROM turns ORDER BY ts""")
     keys = ("msg_id", "request_id", "ts", "session", "cwd", "branch", "model",
-            "in", "out", "cw", "cr", "cw1h", "source")
+            "in", "out", "cw", "cr", "cw1h", "source", "device")
     return [dict(zip(keys, r)) for r in cur]

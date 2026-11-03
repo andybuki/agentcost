@@ -116,3 +116,23 @@ def test_resend_fills_one_hour_share(collector_url):
 def test_turn_without_one_hour_field_still_accepted(collector_url):
     t = turn("old"); t.pop("cw1h", None)
     assert call(collector_url, "/ingest", {"turns": [t]})[0] == 200
+
+def test_device_is_stored_and_listed(collector_url):
+    call(collector_url, "/ingest", {"turns": [turn("a", device="laptop"), turn("b")]})
+    rows = {t["msg_id"]: t for t in call(collector_url, "/turns?after=0", token=RD)[1]["turns"]}
+    assert (rows["a"]["device"], rows["b"]["device"]) == ("laptop", "")
+    assert call(collector_url, "/ingest", {"turns": [turn("c", device="x" * 101)]})[0] == 400
+
+def test_python_collector_migrates_old_database(tmp_path):
+    import sqlite3
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("""CREATE TABLE turns (seq INTEGER PRIMARY KEY AUTOINCREMENT, msg_id TEXT NOT NULL,
+        request_id TEXT NOT NULL, ts TEXT NOT NULL, session TEXT, cwd TEXT, branch TEXT, model TEXT,
+        tok_in INTEGER NOT NULL DEFAULT 0, tok_out INTEGER NOT NULL DEFAULT 0,
+        cache_write INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0,
+        received_at TEXT NOT NULL, UNIQUE (msg_id, request_id))""")
+    con.commit(); con.close()
+    c = Collector(db, IN, RD)
+    assert c.ingest([turn("a", device="laptop", cw1h=1)]) == 1
+    assert c.turns_after(0)["turns"][0]["device"] == "laptop"

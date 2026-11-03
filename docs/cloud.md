@@ -245,6 +245,7 @@ cwd = ["/home/user/bankstm", "/home/user/BankingStatement"]
 | `sync` says "not reachable" | Collector URL correct? Open it in a browser: it should show `{"service":"agentcost collector"}`. |
 | Variables typed into the environment's **Name** | The name is only a label. Put them into *Environment variables* (step 4.2). If a token ended up in a name, it is visible: create a new ingest token (`python -m agentcost tokens`), set it with `npx wrangler secret put INGEST_TOKEN` and in the environment variable, and archive that environment (its settings → **Archive environment**; environments can't be deleted). |
 | No new cloud turns | Was the session started **after** step 4? Is the host allowed under Network access? Are the variable names exactly `AGENTCOST_URL` and `AGENTCOST_INGEST_TOKEN`? |
+| A day is empty although you used Claude | Run `python -m agentcost doctor` and look at *Devices*. Was it a regular chat (not counted), a cloud session in another environment, or another computer? See "Several devices". |
 | Still nothing | In a cloud session, ask Claude to run `python3 ~/.agentcost-hook/agentcost_hook.py check`. It sends right away and prints what went wrong (missing variables, blocked host, wrong token). If the file doesn't exist, the setup script didn't run: check step 4.3. |
 
 **Leaked token?** Create a new one (step 1), run `npx wrangler secret put`
@@ -252,6 +253,49 @@ again, and update the cloud environment variable or `sync --token`.
 
 **Costs:** one person's usage should fit Cloudflare's free tier for Workers and
 D1. Check Cloudflare's current limits if you track a whole team.
+
+## Several devices
+
+agentcost counts **where Claude Code ran**, not which device you typed on:
+
+| Where you used Claude | Counted? | How |
+|---|---|---|
+| Claude Code on the PC where you run agentcost | ✅ | reads the local logs, nothing to set up |
+| Claude Code **cloud session** — started from the phone, web or desktop app | ✅ if the session's **environment** has the hook (step 4) | hook → collector → `sync` |
+| Claude Code on **another computer** (laptop, second PC) | ✅ after `hook-setup` on that computer | hook → collector → `sync` |
+| Regular **claude.ai chats** (the "Recents" list, not the `</>` Code tab) | ❌ | chats write no usage logs that any tool can read |
+
+**Cloud sessions:** the phone and the desktop app share the same cloud
+environments. A session started in an environment *without* the two variables
+and the setup script reports nothing — and that day simply looks empty. Either
+set up every environment you use (step 4, once per environment), or always
+pick the configured one in the environment selector.
+
+**Another computer:** install the hook there (it needs Python 3.11+ and a copy
+of this repository, or just `agentcost/cloud_hook.py`):
+
+```powershell
+python -m agentcost hook-setup --url https://agentcost.<your-subdomain>.workers.dev --token <ingest token> --device laptop
+```
+
+It copies the hook to `~/.agentcost-hook/`, stores URL, ingest token and device
+name in `~/.agentcost-hook/config.json`, adds a Stop hook to
+`~/.claude/settings.json` and sends the transcripts still on that computer
+(Claude Code keeps about 30 days). Then, on the PC where you run agentcost,
+`sync` (or `serve`) picks the turns up. Don't run `hook-setup` on that PC
+itself: its logs are read directly (it would do no harm — turns are counted once).
+
+**Spotting a device that stopped reporting:** `doctor` lists every device with
+its first and last day, and the web view warns when a device is 3 or more days
+behind the others. A day without any data can mean "no work" or "nothing was
+reported" — the device list tells you which.
+
+**Device names** come from the hook: `cloud` for cloud sessions, the computer's
+host name otherwise (or `--device` / `AGENTCOST_DEVICE`). Turns synced before
+this feature show as `cloud` or `local`. To record names, update once:
+`npx wrangler deploy` in `cloud/worker` (the database gets the new column by
+itself) and paste the output of `python -m agentcost cloud-setup` into your
+environments' setup script again. Older hooks and collectors keep working.
 
 ## Develop / test locally
 

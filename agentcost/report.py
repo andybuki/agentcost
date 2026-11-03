@@ -16,6 +16,7 @@ Usage:
 --config defaults to clients.toml in the current folder.
   python -m agentcost sync [--url URL --token READ_TOKEN]   # cloud sessions, see docs/cloud.md
   python -m agentcost cloud-setup                    # setup script for cloud environments
+  python -m agentcost hook-setup --url URL --token INGEST_TOKEN   # another PC / laptop
   python -m agentcost tokens                         # new ingest + read token pair
   python -m agentcost collector [--host H --port P]  # self-hosted collector (instead of Cloudflare)
 
@@ -150,6 +151,57 @@ def setup_script():
 def cmd_cloud_setup(a):
     print(setup_script(), end="")
 
+def claude_settings_path():
+    import os
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude"
+    return Path(base).expanduser() / "settings.json"
+
+def install_hook(url, token, device=None, settings=None, hook_dir=None):
+    """Install the Stop hook on this computer. Returns (hook file, settings file, device)."""
+    import json, os
+    from . import cloud_hook
+    hook_dir = Path(hook_dir or cloud_hook.HOOK_DIR)
+    settings = Path(settings or claude_settings_path())
+    hook_dir.mkdir(parents=True, exist_ok=True)
+    hook = hook_dir / "agentcost_hook.py"
+    hook.write_text((Path(__file__).parent / "cloud_hook.py").read_text(encoding="utf-8"), encoding="utf-8")
+    device = (device or cloud_hook.device_name()).strip()[:100]
+    cfg = hook_dir / "config.json"
+    cfg.write_text(json.dumps({"url": url.rstrip("/"), "ingest_token": token.strip(), "device": device},
+                              indent=2))
+    try:
+        os.chmod(cfg, 0o600)  # the token is a secret; no effect on Windows
+    except OSError:
+        pass
+    # Absolute, quoted, forward slashes: works whether Claude Code runs hooks via
+    # cmd, PowerShell or Git Bash, and with a Python that is not called "python3".
+    py = Path(sys.executable).as_posix()
+    cmd = f'"{py}" "{hook.as_posix()}"'
+    s = json.loads(settings.read_text(encoding="utf-8")) if settings.is_file() else {}
+    stop = s.setdefault("hooks", {}).setdefault("Stop", [])
+    # Replace an earlier agentcost hook (other Python, other folder) instead of adding a second.
+    for e in stop:
+        e["hooks"] = [h for h in e.get("hooks", []) if "agentcost_hook.py" not in h.get("command", "")]
+    stop[:] = [e for e in stop if e.get("hooks")]
+    stop.append({"hooks": [{"type": "command", "command": cmd, "timeout": 15}]})
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(s, indent=2), encoding="utf-8")
+    return hook, settings, device
+
+def cmd_hook_setup(a):
+    from . import cloud_hook
+    hook, settings, device = install_hook(a.url, a.token, a.device)
+    print(f"Installed {hook}")
+    print(f"Stop hook added to {settings}")
+    print(f"This computer reports as device '{device}'.")
+    if a.no_backfill:
+        return
+    print("Sending the transcripts still on this computer (metadata only)...")
+    url, token, device = cloud_hook.settings()
+    if cloud_hook.send(cloud_hook.transcripts(), url, token, device):
+        sys.exit(1)
+    print("Done. New Claude Code sessions here are reported after every reply.")
+
 def cmd_init(a):
     from .init import build
     target = Path(a.config)
@@ -248,6 +300,19 @@ def cmd_doctor(a):
     recs, unpriced = A.enrich(turns, cfg, rules)
     print(f"Data from {recs[0]['day']} to {recs[-1]['day']} ({cfg.get('timezone', 'UTC')})")
 
+    # A device that stopped reporting looks like a day without work: show who reported when.
+    print("\nDevices (where usage came from):")
+    devs = A.devices(recs)
+    for d in devs:
+        note = f"  <- quiet: {d['behind_days']} days behind the newest data" if d["quiet"] else ""
+        print(f"  {d['device']:24} {d['source']:5} {d['turns']:>7} turns  "
+              f"{d['first_day']} .. {d['last_day']}{note}")
+    if any(d["quiet"] for d in devs):
+        print("  A quiet device either had no work or stopped reporting. If you worked there,\n"
+              "  check its hook: docs/cloud.md, section \"Several devices\".")
+    print("  Not listed: regular claude.ai chats (no usage data) and Claude Code on computers\n"
+          "  without the hook (python -m agentcost hook-setup, on that computer).")
+
     sym = cfg.get("currency_symbol", "USD")
     print(f"\nStored per month:          local turns  cloud turns    cost {sym}")
     months = {}
@@ -330,6 +395,12 @@ def main(argv=None):
     p.set_defaults(fn=cmd_sync)
     p = sub.add_parser("cloud-setup", parents=[common], help="print the setup script for cloud environments")
     p.set_defaults(fn=cmd_cloud_setup)
+    p = sub.add_parser("hook-setup", help="report Claude Code usage of THIS computer to your collector")
+    p.add_argument("--url", required=True, help="collector URL")
+    p.add_argument("--token", required=True, help="INGEST token")
+    p.add_argument("--device", help="name for this computer (default: its host name)")
+    p.add_argument("--no-backfill", action="store_true", help="don't send the existing transcripts now")
+    p.set_defaults(fn=cmd_hook_setup)
     p = sub.add_parser("init", parents=[common], help="create clients.toml from the folders in your data")
     p.add_argument("--config", default="clients.toml", help="file to write (default: clients.toml)")
     p.add_argument("--force", action="store_true", help="overwrite an existing file")

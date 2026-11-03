@@ -82,6 +82,8 @@ class App:
             "has_clients": any(n != UNASSIGNED for n in orders["client"]),
             "turns_stored": len(self.turns),
             "log_dirs": self.log_status,
+            "devices": [{**d, "first_day": d["first_day"].isoformat(),
+                         "last_day": d["last_day"].isoformat()} for d in A.devices(recs)],
             "cloud": {"configured": load_cloud_config(self.cloud_config) is not None,
                       "turns": sum(1 for t in self.turns if t["source"] == "cloud"),
                       "error": self.sync_error},

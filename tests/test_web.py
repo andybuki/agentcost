@@ -79,6 +79,8 @@ def test_meta_reports_clients_and_log_dirs(server):
     assert meta["has_clients"] is True
     assert meta["turns_stored"] == 3
     assert meta["log_dirs"] == [{"path": str(logs), "found": True, "files": 1}]
+    (d,) = meta["devices"]
+    assert d["turns"] == 3 and d["last_day"] == "2026-10-11" and d["quiet"] is False
 
 def test_monthly_report_page(server):
     base, _, _ = server
